@@ -1,0 +1,7 @@
+https://www.microsoft.com/en-us/download/confirmation.aspx?id=44266
+
+pip install -U -r requirements/default.txt
+pip install -U scikit-image
+pip install opencv-python
+
+pip install plotly
