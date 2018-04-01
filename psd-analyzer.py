@@ -3,6 +3,9 @@ import getopt
 import math
 import numpy as np
 import cv2
+import statistics
+import lmfit
+import scipy
 
 from PIL import Image
 from scipy import ndimage as ndi
@@ -45,16 +48,32 @@ global imageEdited
 global labels
 global distance
 
-global listAreas, listFittedEllipse, listEquivalentCircularAreaDiameter, listLBCRadius
-
 global listDebugImages, listDebugTitles
 
 listDebugImages = list()
 listDebugTitles = list()
 
+global listGrainImages
+global listHeights
+global listWidths
+global listBoundingBoxAreas
+global listAreas
+global listCPM
+global listECPDiameter
+global listPerimeters
+global listCentroids
+global listEquivalentCircularAreaDiameter
+global listLBCDiameter
+global listFiberLength
+global listFiberWidth
+global listFittedEllipse
+global listMajorAxisLength
+global listMinorAxisLength
+global listIsConvex
+
 def analyze():
     global imageOriginal, imagePreProcessed, imageFiltered, imageSegmented, imageEdited
-    global listAreas, listFittedEllipse, listEquivalentCircularAreaDiameter, listLBCRadius
+    global listGrainImages, listHeights, listWidths, listBoundingBoxAreas, listAreas, listCPM, listECPDiameter, listPerimeters, listCentroids, listEquivalentCircularAreaDiameter, listLBCDiameter, listFiberLength, listFiberWidth, listFittedEllipse, listMajorAxisLength, listMinorAxisLength, listIsConvex
  
     ### Load image ###
     imageOriginal = loadImage()
@@ -81,14 +100,15 @@ def analyze():
     listGrainImages = list()
     listHeights = list()
     listWidths = list()
+    listBoundingBoxAreas = list()
     listAreas = list()
     listCPM = list()
-    listECPD = list()
+    listECPDiameter = list()
 
     listPerimeters = list()
     listCentroids = list()
     listEquivalentCircularAreaDiameter = list()
-    listLBCRadius = list()
+    listLBCDiameter = list()
 
     listFiberLength = list()
     listFiberWidth = list()
@@ -100,6 +120,7 @@ def analyze():
     fig, ax = plt.subplots()
     ax.imshow(imageEdited, cmap=plt.cm.gray)
     for props in regions:
+
         y0, x0 = props.centroid
         orientation = props.orientation
         x1 = x0 + math.cos(orientation) * 0.5 * props.major_axis_length
@@ -122,92 +143,98 @@ def analyze():
         _, contours, hierarchy = cv2.findContours(cv2_image, 1, 2)
         contour = contours[0]
 
-        listGrainImages.append(props.image)
+        if len(contour) > 0:
 
-        # Area
-        listAreas.append(props.area)
+            listGrainImages.append(props.image)
 
-        # Horizontal Feret’s Diameter (HFD): The distance between two parallel lines at horizontal direction that do not intersect the image.
-        # Width of boundingbox
-        listWidths.append(boundingBoxRowMax - boundingBoxRowMin)
+            # Horizontal Feret’s Diameter (HFD): The distance between two parallel lines at horizontal direction that do not intersect the image.
+            # Width of boundingbox
+            width = (boundingBoxRowMax - boundingBoxRowMin) * MICRO_METER_PER_PIXEL
+            listWidths.append(width)
 
-        # Vertical Feret’s Diameter (VFD): The distance between two parallel lines at vertical direction that do not intersect the image.
-        # Height of boundingbox
-        listHeights.append(boundingBoxColMax - boundingBoxColMin)
+            # Vertical Feret’s Diameter (VFD): The distance between two parallel lines at vertical direction that do not intersect the image.
+            # Height of boundingbox
+            height = (boundingBoxColMax - boundingBoxColMin) * MICRO_METER_PER_PIXEL
+            listHeights.append(height)
 
-        # Least Feret’s Diameter (LFD), Feret’s Width: The smallest distance between two parallel lines that do not intersect the image. TODO
-        # Greatest Feret’s Diameter (GFD), Feret’s Length: The greatest distance between two parallel lines that do not intersect the image. TODO
+            # Area
+            listAreas.append(props.area * MICRO_METER_PER_PIXEL * MICRO_METER_PER_PIXEL)
+            listBoundingBoxAreas.append(width * height)
 
-        # Equivalent Circular Area Diameter (ECAD), Heywood’s Diameter: The diameter of a circle that has the same area as the image.
-        listEquivalentCircularAreaDiameter.append(cv2.contourArea(contour))
+            # Least Feret’s Diameter (LFD), Feret’s Width: The smallest distance between two parallel lines that do not intersect the image. TODO
+            # Greatest Feret’s Diameter (GFD), Feret’s Length: The greatest distance between two parallel lines that do not intersect the image. TODO
 
-        # Least Bounding Circle (LBC): The smallest circle that encloses the image. TODO
-        (x0, y0), radius = cv2.minEnclosingCircle(contour)
-        center = (int(x0), int(y0))
-        #radius = int(radius)
-        #img = cv2.circle(img, center, radius, (0,255,0), 2)
-        listLBCRadius.append(radius)
+            # Equivalent Circular Area Diameter (ECAD), Heywood’s Diameter: The diameter of a circle that has the same area as the image.
+            diameter = math.sqrt(cv2.contourArea(contour) / math.pi) * 2 * MICRO_METER_PER_PIXEL
+            listEquivalentCircularAreaDiameter.append(diameter)
 
-        # Convex Perimeter (CPM): The perimeter of a convex curve circumscribing the image.
-        convex_contour = cv2.convexHull(contour)
-        listCPM.append(cv2.arcLength(convex_contour, True))
+            # Least Bounding Circle (LBC): The smallest circle that encloses the image. TODO
+            (x0, y0), radius = cv2.minEnclosingCircle(contour)
+            center = (int(x0), int(y0))
+            #radius = int(radius)
+            #img = cv2.circle(img, center, radius, (0,255,0), 2)
+            listLBCDiameter.append(radius * 2 * MICRO_METER_PER_PIXEL)
 
-        # Equivalent Circular Perimeter Diameter (ECPD): The diameter of a circle that has the same perimeter of the image.
-        imagePerimeter = 2 * (boundingBoxRowMax - boundingBoxRowMin) + 2 * (boundingBoxColMax - boundingBoxColMin)
-        r = imagePerimeter / (2 * math.pi)
-        listECPD.append(2*r)
+            # Convex Perimeter (CPM): The perimeter of a convex curve circumscribing the image.
+            convex_contour = cv2.convexHull(contour)
+            listCPM.append(cv2.arcLength(convex_contour, True) * MICRO_METER_PER_PIXEL)
 
-        #Horizontal Martin’s Diameter (HMD): The length of a line at horizontal direction that divides the image into two equal halves. TODO
-        #Vertical Martin’s Diameter (VMD): The length of a line at vertical direction that divides the image into two equal halves. TODO
-        #Least Bounding Rectangle Width (LBRW): The width of the smallest rectangle that encloses the image. TODO
-        #Least Bounding Rectangle Length (LBRL): The length of the smallest rectangle that encloses the image. TODO
+            # Equivalent Circular Perimeter Diameter (ECPD): The diameter of a circle that has the same perimeter of the image.
+            imagePerimeter = 2 * (boundingBoxRowMax - boundingBoxRowMin) + 2 * (boundingBoxColMax - boundingBoxColMin) * MICRO_METER_PER_PIXEL
+            radius = imagePerimeter / (2 * math.pi)
+            listECPDiameter.append(radius * 2)
 
-        # Fiber Length (FL): The length of a rectangle that has the same area and perimeter as the image.
-        # Fiber Width (FW): The width of a rectangle that has the same area and perimeter as the image.
-        P = 2*(boundingBoxColMax - boundingBoxColMin) + 2*(boundingBoxRowMax - boundingBoxRowMin)
-        A = props.area
-        fiberLength = 0
+            #Horizontal Martin’s Diameter (HMD): The length of a line at horizontal direction that divides the image into two equal halves. TODO
+            #Vertical Martin’s Diameter (VMD): The length of a line at vertical direction that divides the image into two equal halves. TODO
+            #Least Bounding Rectangle Width (LBRW): The width of the smallest rectangle that encloses the image. TODO
+            #Least Bounding Rectangle Length (LBRL): The length of the smallest rectangle that encloses the image. TODO
 
-        a = 1
-        b = -P/2
-        c = A
-        d = b**2-4*a*c # discriminant
+            # Fiber Length (FL): The length of a rectangle that has the same area and perimeter as the image.
+            # Fiber Width (FW): The width of a rectangle that has the same area and perimeter as the image.
+            P = 2*(boundingBoxColMax - boundingBoxColMin) + 2*(boundingBoxRowMax - boundingBoxRowMin)
+            A = props.area
+            fiberLength = 0
 
-        if d < 0:
-            print ("This equation has no real solution")
-        elif d == 0:
-            fiberLength = (-b+math.sqrt(b**2-4*a*c))/2*a
-        else:
-            fiberLength = (-b+math.sqrt((b**2)-(4*(a*c))))/(2*a) # TODO
-            #x2 = (-b-math.sqrt((b**2)-(4*(a*c))))/(2*a)
-        
-        fiberWidth = P / 2 - fiberLength
+            a = 1
+            b = -P/2
+            c = A
+            d = b**2-4*a*c # discriminant
 
-        listFiberLength.append(fiberLength)
-        listFiberWidth.append(fiberWidth)
+            if d < 0:
+                print ("This equation has no real solution")
+            elif d == 0:
+                fiberLength = (-b+math.sqrt(b**2-4*a*c))/2*a
+            else:
+                fiberLength = (-b+math.sqrt((b**2)-(4*(a*c))))/(2*a) # TODO
+                #x2 = (-b-math.sqrt((b**2)-(4*(a*c))))/(2*a)
+            
+            fiberWidth = P / 2 - fiberLength
 
-        if (len(contour) > 4):
-            # Fitted Ellipse
-            ellipse = cv2.fitEllipse(contour)
-            listFittedEllipse.append(ellipse)
+            listFiberLength.append(fiberLength * MICRO_METER_PER_PIXEL)
+            listFiberWidth.append(fiberWidth * MICRO_METER_PER_PIXEL)
 
-            # Major Minor Axis Length
-            (x, y), (Major, Minor), angle = cv2.fitEllipse(contour)
-            listMajorAxisLength.append(Major)
-            listMinorAxisLength.append(Minor)
-        else:
-            # Fitted Ellipse
-            listFittedEllipse.append([])
+            if (len(contour) > 4):
+                # Fitted Ellipse
+                ellipse = cv2.fitEllipse(contour)
+                listFittedEllipse.append(ellipse)
 
-            # Major Minor Axis Length
-            listMajorAxisLength.append(0)
-            listMinorAxisLength.append(0)
+                # Major Minor Axis Length
+                (x, y), (Major, Minor), angle = cv2.fitEllipse(contour)
+                listMajorAxisLength.append(Major * MICRO_METER_PER_PIXEL)
+                listMinorAxisLength.append(Minor * MICRO_METER_PER_PIXEL)
+            else:
+                # Fitted Ellipse
+                listFittedEllipse.append([])
 
-        # Kolla om de är konvexa (har “massa” i centerpunkten) TODO
-        listIsConvex.append(cv2.isContourConvex(contour))
-        
-        listPerimeters.append(props.perimeter)
-        listCentroids.append(props.local_centroid)
+                # Major Minor Axis Length
+                listMajorAxisLength.append(0)
+                listMinorAxisLength.append(0)
+
+            # Kolla om de är konvexa (har “massa” i centerpunkten) TODO
+            listIsConvex.append(cv2.isContourConvex(contour))
+            
+            listPerimeters.append(props.perimeter * MICRO_METER_PER_PIXEL)
+            listCentroids.append(props.local_centroid)
 
     if False:
         for idx, grain in enumerate(listGrainImages):
@@ -223,7 +250,7 @@ def analyze():
             
             #print("Local Maxi: " + str(local_maxi))
             grain = img_as_ubyte(grain)
-            #(x0, y0, radius)= listLBCRadius[idx]
+            #(x0, y0, radius)= listLBCDiameter[idx]
             #ax.plot(x0, y0, '.g', markersize=5)
             #ax.add_artist(plt.Circle((x0+1, y0+1), radius, color='g', fill=False, linestyle='dashed'))
 
@@ -436,28 +463,140 @@ def plotImages():
     plt.show()
 
 def plotData():
-    plt.subplot(131), plt.hist(listAreas, bins=100, density=True, histtype='step', cumulative=True)
-    plt.subplot(131), plt.hist(listAreas, bins=100, density=True, histtype='step', cumulative=-1)
-    plt.subplot(131), plt.title('Histogram Area')
-    plt.subplot(131), plt.xlabel('Area Size')
-    plt.subplot(131), plt.ylabel('Occurence')
-    plt.subplot(131), plt.grid(True)
-    plt.subplot(132), plt.hist(listEquivalentCircularAreaDiameter, bins=100, density=True, histtype='step', cumulative=True)
-    plt.subplot(132), plt.hist(listEquivalentCircularAreaDiameter, bins=100, density=True, histtype='step', cumulative=-1)
-    plt.subplot(132), plt.title('Histogram Equivalent Circular Area Diameter')
-    plt.subplot(132), plt.xlabel('Equivalent Circular Area Diameter')
-    plt.subplot(132), plt.ylabel('Occurence')
-    plt.subplot(132), plt.grid(True)
-    plt.subplot(133), plt.hist(listLBCRadius, bins=100, density=True, histtype='step', cumulative=True)
-    plt.subplot(133), plt.hist(listLBCRadius, bins=100, density=True, histtype='step', cumulative=-1)
-    plt.subplot(133), plt.title('Histogram Equivalent Circular Area Diameter')
-    plt.subplot(133), plt.xlabel('Equivalent Circular Area Diameter')
-    plt.subplot(133), plt.ylabel('Occurence')
-    plt.subplot(133), plt.grid(True)
+
+    # Compact Data Plot
+    listHeights.sort()
+    listWidths.sort()
+    plt.plot(listHeights)
+    plt.plot(listWidths)
+    plt.plot()
+    plt.title('Lengths')
+    plt.legend(['Heights', 'Widths'], loc='upper left')
+    plt.grid(True)
+    plt.show()
+
+    listECPDiameter.sort()
+    #pars = lmfit.Parameters()
+    #pars.add_many(('a', 0.1), ('b', 1))
+    #mini = lmfit.Minimizer(listECPDiameter, pars)
+    #result = mini.minimize()
+    #print(lmfit.fit_report(result.params))
+    
+    for idx, x in enumerate(listECPDiameter):
+        listECPDiameter[idx] = (x / 2.0)**2 * math.pi
+    mid, low, high = mean_confidence_interval(listECPDiameter, confidence=0.95)
+    print(low, mid, high)
+    newListECPDiameter = list()
+    for x in listECPDiameter:
+        if x > low or x < high:
+            newListECPDiameter.append(x)
+
+    listEquivalentCircularAreaDiameter.sort()
+    for idx, x in enumerate(listEquivalentCircularAreaDiameter):
+        listEquivalentCircularAreaDiameter[idx] = (x / 2.0)**2 * math.pi
+    listLBCDiameter.sort()
+    for idx, x in enumerate(listLBCDiameter):
+        listLBCDiameter[idx] = (x / 2.0)**2 * math.pi
+
+    plt.hist(newListECPDiameter, bins=10000, density=True, histtype='step', cumulative=False)
+    #plt.hist(newListECPDiameter, bins=10000, density=True, histtype='step', cumulative=-1)
+    plt.axvline(x=low)
+    plt.axvline(x=mid)
+    plt.axvline(x=high)
+    #plt.hist(listEquivalentCircularAreaDiameter, bins=10000, density=True, histtype='step', cumulative=True)
+    #plt.hist(listEquivalentCircularAreaDiameter, bins=10000, density=True, histtype='step', cumulative=-1)
+    #plt.hist(listLBCDiameter, bins=10000, density=True, histtype='step', cumulative=True)
+    #plt.hist(listLBCDiameter, bins=10000, density=True, histtype='step', cumulative=-1)
+    #plt.title('Diameters')
+    #plt.legend(['ECPDiameter', 'EquivalentCircularAreaDiameter', 'LBCDiameter'], loc='upper left')
+    plt.xscale('log')
+    plt.grid(True)
+    plt.show()
+
+    #listAreas
+    stdev = statistics.pstdev(listAreas)
+    variance = statistics.pvariance(listAreas)
+    plt.subplot(211), plt.hist(listAreas, bins=10000, density=True, histtype='step', cumulative=True)
+    plt.subplot(211), plt.hist(listAreas, bins=10000, density=True, histtype='step', cumulative=-1)
+    plt.subplot(211), plt.title('Histogram Area\n' + 'Standard Deviation: ' + str(stdev) + '\n' + 'Variance: ' + str(variance))
+    plt.subplot(211), plt.xlabel('μm^2')
+    plt.subplot(211), plt.ylabel('Occurence')
+    plt.subplot(211), plt.grid(True)
+
+    #listBoundingBoxAreas
+    plt.subplot(212), plt.hist(listBoundingBoxAreas, bins=10000, density=True, histtype='step', cumulative=True)
+    plt.subplot(212), plt.hist(listBoundingBoxAreas, bins=10000, density=True, histtype='step', cumulative=-1)
+    plt.subplot(212), plt.title('Histogram Bounding Box Areas')
+    plt.subplot(212), plt.xlabel('μm')
+    plt.subplot(212), plt.ylabel('Occurence')
+    plt.subplot(212), plt.grid(True)
 
     plt.show()
 
+    #listPerimeters
+    plt.subplot(311), plt.hist(listECPDiameter, bins=100, density=True, histtype='step', cumulative=True)
+    plt.subplot(311), plt.hist(listECPDiameter, bins=100, density=True, histtype='step', cumulative=-1)
+    plt.subplot(311), plt.title('Histogram Perimeter')
+    plt.subplot(311), plt.xlabel('μm')
+    plt.subplot(311), plt.ylabel('Occurence')
+    plt.subplot(311), plt.grid(True)
 
+    #listCPM
+    plt.subplot(312), plt.hist(listCPM, bins=100, density=True, histtype='step', cumulative=True)
+    plt.subplot(312), plt.hist(listCPM, bins=100, density=True, histtype='step', cumulative=-1)
+    plt.subplot(312), plt.title('Histogram Convex Perimeter')
+    plt.subplot(312), plt.xlabel('μm')
+    plt.subplot(312), plt.ylabel('Occurence')
+    plt.subplot(312), plt.grid(True)
+    
+    #listECPDiameter
+    plt.subplot(313), plt.hist(listECPDiameter, bins=100, density=True, histtype='step', cumulative=True)
+    plt.subplot(313), plt.hist(listECPDiameter, bins=100, density=True, histtype='step', cumulative=-1)
+    plt.subplot(313), plt.title('Histogram Equivalent Circular Perimeter Diameter')
+    plt.subplot(313), plt.xlabel('μm')
+    plt.subplot(313), plt.ylabel('Occurence')
+    plt.subplot(313), plt.grid(True)
+
+    plt.show()
+
+    #listCentroids = list()
+    #listEquivalentCircularAreaDiameter = list()
+    #listLBCDiameter = list()
+
+    #listFiberLength = list()
+    #listFiberWidth = list()
+    #listFittedEllipse = list()
+    #listMajorAxisLength = list()
+    #listMinorAxisLength = list()
+    #listIsConvex = list()
+
+    plt.subplot(311), plt.hist(listAreas, bins=100, density=True, histtype='step', cumulative=True)
+    plt.subplot(311), plt.hist(listAreas, bins=100, density=True, histtype='step', cumulative=-1)
+    plt.subplot(311), plt.title('Histogram Area')
+    plt.subplot(311), plt.xlabel('Area Size')
+    plt.subplot(311), plt.ylabel('Occurence')
+    plt.subplot(311), plt.grid(True)
+    plt.subplot(312), plt.hist(listEquivalentCircularAreaDiameter, bins=100, density=True, histtype='step', cumulative=True)
+    plt.subplot(312), plt.hist(listEquivalentCircularAreaDiameter, bins=100, density=True, histtype='step', cumulative=-1)
+    plt.subplot(312), plt.title('Histogram Equivalent Circular Area Diameter')
+    plt.subplot(312), plt.xlabel('Equivalent Circular Area Diameter')
+    plt.subplot(312), plt.ylabel('Occurence')
+    plt.subplot(312), plt.grid(True)
+    plt.subplot(313), plt.hist(listLBCDiameter, bins=100, density=True, histtype='step', cumulative=True)
+    plt.subplot(313), plt.hist(listLBCDiameter, bins=100, density=True, histtype='step', cumulative=-1)
+    plt.subplot(313), plt.title('Histogram Equivalent Circular Area Diameter')
+    plt.subplot(313), plt.xlabel('Equivalent Circular Area Diameter')
+    plt.subplot(313), plt.ylabel('Occurence')
+    plt.subplot(313), plt.grid(True)
+
+    plt.show()
+
+def mean_confidence_interval(data, confidence=0.95):
+    a = 1.0*np.array(data)
+    n = len(a)
+    m, se = np.mean(a), scipy.stats.sem(a)
+    h = se * scipy.stats.t._ppf((1+confidence)/2., n-1)
+    return m, m-h, m+h
 
 
 
