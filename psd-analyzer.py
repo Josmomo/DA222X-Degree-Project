@@ -29,7 +29,12 @@ from skimage.measure import label, regionprops
 from skimage.transform import rotate
 
 ### Constants
-FILENAME = 'image.jpg'
+global FILENAME
+FILENAME = 'images/image/latest0.jpg'
+global X50REF
+global X503TEMP
+X50REF = 1
+X503TEMP = 1
 # TODO um / pixel microMeterPerPixel = 20.0 # 19.8
 MICRO_METER_PER_PIXEL = 17.39
 
@@ -39,6 +44,7 @@ global DEBUG_EDITING
 global DEBUG_PLOT
 
 HYBRID_FILTER = True
+DEBUG_WATERSHED = True
 
 global imageOriginal
 global imagePreProcessed
@@ -50,9 +56,6 @@ global distance
 
 global listDebugImages, listDebugTitles
 
-listDebugImages = list()
-listDebugTitles = list()
-
 global listGrainImages
 global listHeights
 global listWidths
@@ -62,7 +65,7 @@ global listCPM
 global listECPDiameter
 global listPerimeters
 global listCentroids
-global listEquivalentCircularAreaDiameter
+global listECADiameter
 global listLBCDiameter
 global listFiberLength
 global listFiberWidth
@@ -73,8 +76,12 @@ global listIsConvex
 
 def analyze():
     global imageOriginal, imagePreProcessed, imageFiltered, imageSegmented, imageEdited
-    global listGrainImages, listHeights, listWidths, listBoundingBoxAreas, listAreas, listCPM, listECPDiameter, listPerimeters, listCentroids, listEquivalentCircularAreaDiameter, listLBCDiameter, listFiberLength, listFiberWidth, listFittedEllipse, listMajorAxisLength, listMinorAxisLength, listIsConvex
+    global listDebugImages, listDebugTitles
+    global listGrainImages, listHeights, listWidths, listBoundingBoxAreas, listAreas, listCPM, listECPDiameter, listPerimeters, listCentroids, listECADiameter, listLBCDiameter, listFiberLength, listFiberWidth, listFittedEllipse, listMajorAxisLength, listMinorAxisLength, listIsConvex
  
+    listDebugImages = list()
+    listDebugTitles = list()
+
     ### Load image ###
     imageOriginal = loadImage()
 
@@ -89,6 +96,12 @@ def analyze():
 
     ### Editing ###
     imageEdited = editImage(imageSegmented)
+
+    # Edge Detection
+    #image_tmp = img_as_ubyte(imageEdited)
+    #imageEdges = auto_canny(image_tmp)
+    #plt.plot(imageEdited)
+    #plt.show()
 
     ### Measure ###
     # TODO
@@ -107,7 +120,7 @@ def analyze():
 
     listPerimeters = list()
     listCentroids = list()
-    listEquivalentCircularAreaDiameter = list()
+    listECADiameter = list()
     listLBCDiameter = list()
 
     listFiberLength = list()
@@ -116,25 +129,27 @@ def analyze():
     listMajorAxisLength = list()
     listMinorAxisLength = list()
     listIsConvex = list()
+    count = 0
 
     fig, ax = plt.subplots()
-    ax.imshow(imageEdited, cmap=plt.cm.gray)
+
     for props in regions:
 
-        y0, x0 = props.centroid
-        orientation = props.orientation
-        x1 = x0 + math.cos(orientation) * 0.5 * props.major_axis_length
-        y1 = y0 - math.sin(orientation) * 0.5 * props.major_axis_length
-        x2 = x0 - math.sin(orientation) * 0.5 * props.minor_axis_length
-        y2 = y0 - math.cos(orientation) * 0.5 * props.minor_axis_length
+        if False:
+            y0, x0 = props.centroid
+            orientation = props.orientation
+            x1 = x0 + math.cos(orientation) * 0.5 * props.major_axis_length
+            y1 = y0 - math.sin(orientation) * 0.5 * props.major_axis_length
+            x2 = x0 - math.sin(orientation) * 0.5 * props.minor_axis_length
+            y2 = y0 - math.cos(orientation) * 0.5 * props.minor_axis_length
 
-        ax.plot((x0, x1), (y0, y1), '-r', linewidth=1.0)
-        ax.plot((x0, x2), (y0, y2), '-r', linewidth=1.0)
+            ax.plot((x0, x1), (y0, y1), '-r', linewidth=1.0)
+            ax.plot((x0, x2), (y0, y2), '-r', linewidth=1.0)
 
-        minr, minc, maxr, maxc = props.bbox
-        bx = (minc, maxc, maxc, minc, minc)
-        by = (minr, minr, maxr, maxr, minr)
-        ax.plot(bx, by, '-b', linewidth=1.0)
+            minr, minc, maxr, maxc = props.bbox
+            bx = (minc, maxc, maxc, minc, minc)
+            by = (minr, minr, maxr, maxr, minr)
+            ax.plot(bx, by, '-b', linewidth=1.0)
 
         boundingBoxRowMin, boundingBoxColMin, boundingBoxRowMax, boundingBoxColMax = props.bbox
 
@@ -143,8 +158,8 @@ def analyze():
         _, contours, hierarchy = cv2.findContours(cv2_image, 1, 2)
         contour = contours[0]
 
-        if len(contour) > 0:
-
+        
+        if len(contour) > 0 and cv2.arcLength(contour, True) > 0.0 and cv2.contourArea(contour) > 0.0: #and props.area > 25 and props.area < 2500:
             listGrainImages.append(props.image)
 
             # Horizontal Feret’s Diameter (HFD): The distance between two parallel lines at horizontal direction that do not intersect the image.
@@ -166,7 +181,9 @@ def analyze():
 
             # Equivalent Circular Area Diameter (ECAD), Heywood’s Diameter: The diameter of a circle that has the same area as the image.
             diameter = math.sqrt(cv2.contourArea(contour) / math.pi) * 2 * MICRO_METER_PER_PIXEL
-            listEquivalentCircularAreaDiameter.append(diameter)
+            listECADiameter.append(diameter)
+            if diameter < 50:
+                count += 1
 
             # Least Bounding Circle (LBC): The smallest circle that encloses the image. TODO
             (x0, y0), radius = cv2.minEnclosingCircle(contour)
@@ -180,9 +197,10 @@ def analyze():
             listCPM.append(cv2.arcLength(convex_contour, True) * MICRO_METER_PER_PIXEL)
 
             # Equivalent Circular Perimeter Diameter (ECPD): The diameter of a circle that has the same perimeter of the image.
-            imagePerimeter = 2 * (boundingBoxRowMax - boundingBoxRowMin) + 2 * (boundingBoxColMax - boundingBoxColMin) * MICRO_METER_PER_PIXEL
+            imagePerimeter = cv2.arcLength(contour, True)
+            #imagePerimeter = 2 * (boundingBoxRowMax - boundingBoxRowMin) + 2 * (boundingBoxColMax - boundingBoxColMin) * MICRO_METER_PER_PIXEL
             radius = imagePerimeter / (2 * math.pi)
-            listECPDiameter.append(radius * 2)
+            listECPDiameter.append(radius * 2 * MICRO_METER_PER_PIXEL)
 
             #Horizontal Martin’s Diameter (HMD): The length of a line at horizontal direction that divides the image into two equal halves. TODO
             #Vertical Martin’s Diameter (VMD): The length of a line at vertical direction that divides the image into two equal halves. TODO
@@ -191,7 +209,10 @@ def analyze():
 
             # Fiber Length (FL): The length of a rectangle that has the same area and perimeter as the image.
             # Fiber Width (FW): The width of a rectangle that has the same area and perimeter as the image.
-            P = 2*(boundingBoxColMax - boundingBoxColMin) + 2*(boundingBoxRowMax - boundingBoxRowMin)
+            (x, y), (w, h), r = cv2.minAreaRect(contour)
+            P = 2 * (boundingBoxColMax - boundingBoxColMin) + 2 * (boundingBoxRowMax - boundingBoxRowMin)
+            #print(str(x1) + " " + str(x2) + " " + str(y1) + " " + str(y2))
+            #P = 2 * w + 2 * h
             A = props.area
             fiberLength = 0
 
@@ -201,11 +222,15 @@ def analyze():
             d = b**2-4*a*c # discriminant
 
             if d < 0:
-                print ("This equation has no real solution")
+                print("This equation has no real solution for " + str(P))
+                #print("a: " + str(a))
+                #print("b: " + str(b))
+                #print("c: " + str(c))
+                #print("d: " + str(d))
             elif d == 0:
-                fiberLength = (-b+math.sqrt(b**2-4*a*c))/2*a
+                fiberLength = (-b + math.sqrt(b**2 - 4*a*c)) / (2 * a)
             else:
-                fiberLength = (-b+math.sqrt((b**2)-(4*(a*c))))/(2*a) # TODO
+                fiberLength = (-b + math.sqrt(b**2 - 4*a*c)) / (2 * a) # TODO
                 #x2 = (-b-math.sqrt((b**2)-(4*(a*c))))/(2*a)
             
             fiberWidth = P / 2 - fiberLength
@@ -259,17 +284,74 @@ def analyze():
 
             x0, y0 = listCentroids[idx]
             ax.plot(x0+1, y0+1, '.r', markersize=5)
-            ax.add_artist(plt.Circle((x0+1, y0+1), listEquivalentCircularAreaDiameter[idx]/2.0, color='r', fill=False, linestyle='dashed'))
+            ax.add_artist(plt.Circle((x0+1, y0+1), listECADiameter[idx]/2.0, color='r', fill=False, linestyle='dashed'))
 
             plt.show()
 
     # Useful information / statistics
-    print("Number of grains: " + str(len(regions)))
+    print("Total number of grains: " + str(len(regions)))
+    print("Number of dirt grains:" + str(count))
+    print("Number of dirt grains %:" + str(100*count/len(regions)))
+
+    # FiberLength data
+    listFiberLength.sort()
+    arrayListFiberLength = np.array(listFiberLength)
+    x10 = np.percentile(arrayListFiberLength, 10)
+    x16 = np.percentile(arrayListFiberLength, 16)
+    x50 = np.percentile(arrayListFiberLength, 50)
+    x84 = np.percentile(arrayListFiberLength, 84)
+    x90 = np.percentile(arrayListFiberLength, 90)
+    x99 = np.percentile(arrayListFiberLength, 99)
+
+    Q1 = (listFiberLength[-1] + 1) / 4
+    Q2 = 2 * (listFiberLength[-1] + 1) / 4
+    Q3 = 3 * (listFiberLength[-1] + 1) / 4
+
+    f = np.fft.fft2(imagePreProcessed)
+    fshift = np.fft.fftshift(f)
+    magnitude_spectrum = 20*np.log(np.abs(fshift))
+    #plt.plot(magnitude_spectrum)
+    #plt.show()
+
+    laplacian = cv2.Laplacian(imagePreProcessed, 32)
+    bluriness = magnitude_spectrum.var()
+    print("cv2.CV_64F = " + str(cv2.CV_64F))
+
+    print("\n\n\n##### " + str(FILENAME) + " # " + str(X50REF) + " #####")
+    print("3TEMP x50: " + str(X503TEMP) + "   " + "Deviation %: " + str(X503TEMP/float(X50REF)*100 - 100))
+    print("      x50: " + str(x50) + "   " + "Deviation %: " + str(x50/float(X50REF)*100 - 100))
+
+    Sauter3 = 0
+    Sauter2 = 0
+    for a in listECADiameter:
+        Sauter3 += a**3
+        Sauter2 += a**2
+    Sauter32 = Sauter3 / Sauter2
+
+    print("Sauter32: " + str(Sauter32))
+
+    print("")
+    print("Blur Score: " + str(bluriness))
+    print("Measured x10: " + str(x10))
+    print("Measured x16: " + str(x16))
+    print("Measured x50: " + str(x50))
+    print("Measured x84: " + str(x84))
+    print("Measured x90: " + str(x90))
+    print("Measured x99: " + str(x99))
+    
+    #plt.plot(laplacian)
+    #plt.show()
+
+    #print("Standard Deviation: " + str(statistics.pstdev(listFiberLength)))
+    #print("Variance: " + str(statistics.pvariance(listFiberLength)))
+    #print("Q1: " + str(Q1))
+    #print("Q2: " + str(Q2))
+    #print("Q3: " + str(Q3))
 
     if (DEBUG_PLOT):
         plotImages()
 
-    plotData()
+    #plotData()
 
 def preProcessImage(inputImage):
     ### Aquired image ###
@@ -338,7 +420,7 @@ def segmentImage(inputImage):
     #threshold = skimage.filters.threshold_local(image, 3)
     
     # Binary
-    image = inputImage <= threshold
+    image = inputImage <= threshold #TODO Får inte samma värde som Anders, belysningen räknas in här
     listDebugImages.append(image)
     listDebugTitles.append('Binary Threshold')
 
@@ -367,7 +449,12 @@ def segmentImage(inputImage):
 def editImage(inputImage):
     ### Editing ###
     global labels, distance
-    image = inputImage
+    image = img_as_ubyte(inputImage)
+
+    #kernel = np.ones((3,3),np.uint8)
+    #image = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
+    #listDebugImages.append(image)
+    #listDebugTitles.append('Opening')
 
     # Fill interior TODO
     #seed = np.copy(image)
@@ -467,51 +554,45 @@ def plotData():
     # Compact Data Plot
     listHeights.sort()
     listWidths.sort()
-    plt.plot(listHeights)
-    plt.plot(listWidths)
-    plt.plot()
-    plt.title('Lengths')
-    plt.legend(['Heights', 'Widths'], loc='upper left')
+    listECPDiameter.sort()
+    listLBCDiameter.sort()
+    listFiberLength.sort()
+    listFiberWidth.sort()
+    listMajorAxisLength.sort()
+    listMinorAxisLength.sort()
+    plt.hist(listHeights, bins=100000, density=True, histtype='step', cumulative=True)
+    plt.hist(listWidths, bins=100000, density=True, histtype='step', cumulative=True)
+    plt.hist(listECPDiameter, bins=100000, density=True, histtype='step', cumulative=True)
+    plt.hist(listLBCDiameter, bins=100000, density=True, histtype='step', cumulative=True)
+    plt.hist(listFiberLength, bins=100000, density=True, histtype='step', cumulative=True)
+    plt.hist(listFiberWidth, bins=100000, density=True, histtype='step', cumulative=True)
+    plt.hist(listMajorAxisLength, bins=100000, density=True, histtype='step', cumulative=True)
+    plt.hist(listMinorAxisLength, bins=100000, density=True, histtype='step', cumulative=True)
+    plt.title('Diameters')
+    plt.legend(['Height', 'Width', 'ECPD', 'LBCD', 'Fiber Length', 'Fiber Width', 'Major Axis', 'Minor Axis'], loc='upper left')
+    plt.axvline(x=float(X50REF), color='red')
+    plt.axhline(y=0.5, color='red')
     plt.grid(True)
+    plt.xscale('log')
     plt.show()
 
-    listECPDiameter.sort()
     #pars = lmfit.Parameters()
     #pars.add_many(('a', 0.1), ('b', 1))
     #mini = lmfit.Minimizer(listECPDiameter, pars)
     #result = mini.minimize()
     #print(lmfit.fit_report(result.params))
     
-    for idx, x in enumerate(listECPDiameter):
-        listECPDiameter[idx] = (x / 2.0)**2 * math.pi
-    mid, low, high = mean_confidence_interval(listECPDiameter, confidence=0.95)
+    #for idx, x in enumerate(listECPDiameter):
+    #    listECPDiameter[idx] = (x / 2.0)**2 * math.pi
+    mid, low, high = mean_confidence_interval(listECPDiameter, confidence=0.70)
     print(low, mid, high)
-    newListECPDiameter = list()
-    for x in listECPDiameter:
-        if x > low or x < high:
-            newListECPDiameter.append(x)
 
-    listEquivalentCircularAreaDiameter.sort()
-    for idx, x in enumerate(listEquivalentCircularAreaDiameter):
-        listEquivalentCircularAreaDiameter[idx] = (x / 2.0)**2 * math.pi
+    listECADiameter.sort()
+    #for idx, x in enumerate(listECADiameter):
+    #    listECADiameter[idx] = (x / 2.0)**2 * math.pi
     listLBCDiameter.sort()
-    for idx, x in enumerate(listLBCDiameter):
-        listLBCDiameter[idx] = (x / 2.0)**2 * math.pi
-
-    plt.hist(newListECPDiameter, bins=10000, density=True, histtype='step', cumulative=False)
-    #plt.hist(newListECPDiameter, bins=10000, density=True, histtype='step', cumulative=-1)
-    plt.axvline(x=low)
-    plt.axvline(x=mid)
-    plt.axvline(x=high)
-    #plt.hist(listEquivalentCircularAreaDiameter, bins=10000, density=True, histtype='step', cumulative=True)
-    #plt.hist(listEquivalentCircularAreaDiameter, bins=10000, density=True, histtype='step', cumulative=-1)
-    #plt.hist(listLBCDiameter, bins=10000, density=True, histtype='step', cumulative=True)
-    #plt.hist(listLBCDiameter, bins=10000, density=True, histtype='step', cumulative=-1)
-    #plt.title('Diameters')
-    #plt.legend(['ECPDiameter', 'EquivalentCircularAreaDiameter', 'LBCDiameter'], loc='upper left')
-    plt.xscale('log')
-    plt.grid(True)
-    plt.show()
+    #for idx, x in enumerate(listLBCDiameter):
+    #    listLBCDiameter[idx] = (x / 2.0)**2 * math.pi
 
     #listAreas
     stdev = statistics.pstdev(listAreas)
@@ -531,7 +612,7 @@ def plotData():
     plt.subplot(212), plt.ylabel('Occurence')
     plt.subplot(212), plt.grid(True)
 
-    plt.show()
+    #plt.show()
 
     #listPerimeters
     plt.subplot(311), plt.hist(listECPDiameter, bins=100, density=True, histtype='step', cumulative=True)
@@ -557,39 +638,7 @@ def plotData():
     plt.subplot(313), plt.ylabel('Occurence')
     plt.subplot(313), plt.grid(True)
 
-    plt.show()
-
-    #listCentroids = list()
-    #listEquivalentCircularAreaDiameter = list()
-    #listLBCDiameter = list()
-
-    #listFiberLength = list()
-    #listFiberWidth = list()
-    #listFittedEllipse = list()
-    #listMajorAxisLength = list()
-    #listMinorAxisLength = list()
-    #listIsConvex = list()
-
-    plt.subplot(311), plt.hist(listAreas, bins=100, density=True, histtype='step', cumulative=True)
-    plt.subplot(311), plt.hist(listAreas, bins=100, density=True, histtype='step', cumulative=-1)
-    plt.subplot(311), plt.title('Histogram Area')
-    plt.subplot(311), plt.xlabel('Area Size')
-    plt.subplot(311), plt.ylabel('Occurence')
-    plt.subplot(311), plt.grid(True)
-    plt.subplot(312), plt.hist(listEquivalentCircularAreaDiameter, bins=100, density=True, histtype='step', cumulative=True)
-    plt.subplot(312), plt.hist(listEquivalentCircularAreaDiameter, bins=100, density=True, histtype='step', cumulative=-1)
-    plt.subplot(312), plt.title('Histogram Equivalent Circular Area Diameter')
-    plt.subplot(312), plt.xlabel('Equivalent Circular Area Diameter')
-    plt.subplot(312), plt.ylabel('Occurence')
-    plt.subplot(312), plt.grid(True)
-    plt.subplot(313), plt.hist(listLBCDiameter, bins=100, density=True, histtype='step', cumulative=True)
-    plt.subplot(313), plt.hist(listLBCDiameter, bins=100, density=True, histtype='step', cumulative=-1)
-    plt.subplot(313), plt.title('Histogram Equivalent Circular Area Diameter')
-    plt.subplot(313), plt.xlabel('Equivalent Circular Area Diameter')
-    plt.subplot(313), plt.ylabel('Occurence')
-    plt.subplot(313), plt.grid(True)
-
-    plt.show()
+    #plt.show()
 
 def mean_confidence_interval(data, confidence=0.95):
     a = 1.0*np.array(data)
@@ -598,6 +647,30 @@ def mean_confidence_interval(data, confidence=0.95):
     h = se * scipy.stats.t._ppf((1+confidence)/2., n-1)
     return m, m-h, m+h
 
+def auto_canny(image, sigma=0.33):
+    # compute the median of the single channel pixel intensities
+    v = np.median(image)
+ 
+    # apply automatic Canny edge detection using the computed median
+    lower = int(max(0, (1.0 - sigma) * v))
+    upper = int(min(255, (1.0 + sigma) * v))
+    edged = cv2.Canny(image, lower, upper)
+ 
+    # return the edged image
+    return edged
+
+# line segment a given by endpoints a1, a2
+# line segment b given by endpoints b1, b2
+# return 
+def seg_intersect(a1,a2, b1,b2) :
+    da = a2-a1
+    db = b2-b1
+    dp = a1-b1
+    dap = perp(da)
+    denom = dot( dap, db)
+    num = dot( dap, dp )
+    return (num / denom.astype(float))*db + b1
+
 
 
 
@@ -605,37 +678,90 @@ def mean_confidence_interval(data, confidence=0.95):
 
 ##### MAIN ####
 def main():
-    global DEBUG_FILTERING, DEBUG_SEGMENTING, DEBUG_EDITING, DEBUG_PLOT
+    global DEBUG_FILTERING, DEBUG_SEGMENTING, DEBUG_EDITING, DEBUG_PLOT, FILENAME, X50REF, X503TEMP
     DEBUG_FILTERING = False
     DEBUG_SEGMENTING = False
     DEBUG_EDITING = False
-    DEBUG_PLOT = True
+    DEBUG_PLOT = False
+    DEBUG_TEST_ALL = False
 
     # parse command line options
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "h:d", ["help", "debug"])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["debug", "plot", "filename=", "x50=", "test-all"])
     except getopt.GetoptError as err:
         print(err)
         print("error")
         sys.exit(2)
 
     # process options
+    #for o, a in opts:
+    #    print("o: " + str(o) + "\na: " + str(a))
     for o, a in opts:
-        if o in ("-h", "--help"):
-            print("--help")
-            sys.exit(0)
-        if o in ("-d", "--debug"):
+        if o in ("--debug"):
             print("--debug")
             DEBUG_FILTERING = True
             DEBUG_SEGMENTING = True
             DEBUG_EDITING = True
+        elif o in ("--plot"):
+            print("--plot")
             DEBUG_PLOT = True
+        elif o in ("--filename="):
+            FILENAME = "Images/" + a + "/latest0.jpg"
+        elif o in ("--x50="):
+            X50REF = a
+        elif o in ("--test-all"):
+            DEBUG_TEST_ALL = True
 
     # process arguments
     for arg in args:
         process(arg) # process() is defined elsewhere
 
-    analyze()
+    if (DEBUG_TEST_ALL):
+        listTest = list()
+        listTest.append((1040, 394, 441))
+        listTest.append((1084, 396, 452))
+        listTest.append((1108, 449, 486))
+        listTest.append((1109, 401, 417))
+        listTest.append((1150, 426, 416))
+        listTest.append((1156, 422, 435))
+        listTest.append((1159, 409, 483))
+        listTest.append((1162, 388, 457))
+        listTest.append((1168, 426, 542))
+        listTest.append((1175, 428, 361))
+        listTest.append((1177, 421, 537))
+        listTest.append((1181, 439, 525))
+        listTest.append((1187, 390, 389))
+        listTest.append((1190, 406, 428))
+        listTest.append((1191, 409, 517))
+        listTest.append((1197, 409, 532))
+        listTest.append((1206, 421, 522))
+        listTest.append((1207, 356, 459))
+        listTest.append((1210, 401, 506))
+        listTest.append((1213, 394, 518))
+        listTest.append((1214, 431, 437))
+        listTest.append((1217, 437, 466))
+        listTest.append((11095, 450, 383))
+        listTest.append((11096, 414, 477))
+        listTest.append((11104, 416, 456))
+        listTest.append((11112, 387, 476))
+        listTest.append((11133, 391, 472))
+        listTest.append((11144, 410, 478))
+        listTest.append((11146, 420, 539))
+        listTest.append((11147, 405, 579))
+        listTest.append((11158, 416, 509))
+        listTest.append((11160, 419, 507))
+        listTest.append((11199, 434, 465))
+        listTest.append((11204, 407, 545))
+        listTest.append((11216, 405, 443))
+        listTest.append((11222, 415, 453))
+
+        for (file, temp3, expected) in listTest:
+            FILENAME = "Images/" + str(file) + "/latest0.jpg"
+            X503TEMP = temp3
+            X50REF = expected
+            analyze()
+    else:
+        analyze()
 
 def process(arg):
     print(arg)
