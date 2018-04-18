@@ -7,6 +7,8 @@ import statistics
 import lmfit
 import scipy
 
+from xlsxwriter import Workbook #, easyxf
+
 from PIL import Image
 from scipy import ndimage as ndi
 import matplotlib.pyplot as plt
@@ -36,12 +38,69 @@ global X503TEMP
 X50REF = 1
 X503TEMP = 1
 # TODO um / pixel microMeterPerPixel = 20.0 # 19.8
-MICRO_METER_PER_PIXEL = 17.39
+MICRO_METER_PER_PIXEL = 1 #19.8 #17.39
+
+# Excel setup
+wb = Workbook('output.xlsx')
+excel_sheet = wb.add_worksheet() #wb.add_sheet('Test all')
+formatRed = wb.add_format({
+    'bold': 'true', 
+    'bg_color': 'red'
+})
+formatYellow = wb.add_format({
+    'bold': 'true', 
+    'bg_color': 'yellow'
+})
+formatGreen = wb.add_format({
+    'bold': 'true', 
+    'bg_color': 'green'
+})
+global EXCEL_ROW
+EXCEL_ROW = 1
+
+excel_sheet.write(0, 0, 'Micrometer / Pixel')
+excel_sheet.write(1, 0, MICRO_METER_PER_PIXEL)
+excel_sheet.write(0, 1, 'Filename')
+excel_sheet.write(0, 2, 'Reference x50')
+excel_sheet.write(0, 3, '3TEMP x50')
+excel_sheet.write(0, 4, '3TEMP Deviation')
+
+excel_sheet.write(0, 5, 'Heights x50')
+excel_sheet.write(0, 6, 'Heights Deviation')
+excel_sheet.write(0, 7, 'Widths x50')
+excel_sheet.write(0, 8, 'Widths Deviation')
+excel_sheet.write(0, 9, 'Least Feret Diameter x50')
+excel_sheet.write(0, 10, 'Least Feret Diameter Deviation')
+excel_sheet.write(0, 11, 'Greatest Feret Diameter x50')
+excel_sheet.write(0, 12, 'Greatest Feret Diameter Deviation')
+excel_sheet.write(0, 13, 'Equivalent Circle Perimeter Diameter x50')
+excel_sheet.write(0, 14, 'Equivalent Circle Perimeter Diameter Deviation')
+excel_sheet.write(0, 15, 'Equivalent Circle Area Diameter x50')
+excel_sheet.write(0, 16, 'Equivalent Circle Area Diameter Deviation')
+excel_sheet.write(0, 17, 'Least Bounding Circle Diameter x50')
+excel_sheet.write(0, 18, 'Least Bounding Circle Diameter Deviation')
+excel_sheet.write(0, 19, 'Horizontal Martin Diameter x50')
+excel_sheet.write(0, 20, 'Horizontal Martin Diameter Deviation')
+excel_sheet.write(0, 21, 'Vertical Martin Diameter x50')
+excel_sheet.write(0, 22, 'Vertical Martin Diameter Deviation')
+excel_sheet.write(0, 23, 'Least Bounding Rectagle Width x50')
+excel_sheet.write(0, 24, 'Least Bounding Rectagle Width Deviation')
+excel_sheet.write(0, 25, 'Least Bounding Rectangle Length x50')
+excel_sheet.write(0, 26, 'Least Bounding Rectangle Length Deviation')
+excel_sheet.write(0, 27, 'Fiber Length x50')
+excel_sheet.write(0, 28, 'Fiber Length Deviation')
+excel_sheet.write(0, 29, 'Fiber Width x50')
+excel_sheet.write(0, 30, 'Fiber Width Deviation')
+excel_sheet.write(0, 31, 'Major Axis Length x50')
+excel_sheet.write(0, 32, 'Major Axis Length Deviation')
+excel_sheet.write(0, 33, 'Minor Axis Length x50')
+excel_sheet.write(0, 34, 'Minor Axis Length Deviation')
 
 global DEBUG_FILTERING
 global DEBUG_SEGMENTING
 global DEBUG_EDITING
 global DEBUG_PLOT
+global DEBUG_DATA
 
 HYBRID_FILTER = True
 DEBUG_WATERSHED = True
@@ -59,6 +118,8 @@ global listDebugImages, listDebugTitles
 global listGrainImages
 global listHeights
 global listWidths
+global listLFDiameter
+global listGFDiameter
 global listBoundingBoxAreas
 global listAreas
 global listCPM
@@ -67,6 +128,10 @@ global listPerimeters
 global listCentroids
 global listECADiameter
 global listLBCDiameter
+global listHMDiameter
+global listVMDiameter
+global listLBRW
+global listLBRL
 global listFiberLength
 global listFiberWidth
 global listFittedEllipse
@@ -77,7 +142,7 @@ global listIsConvex
 def analyze():
     global imageOriginal, imagePreProcessed, imageFiltered, imageSegmented, imageEdited
     global listDebugImages, listDebugTitles
-    global listGrainImages, listHeights, listWidths, listBoundingBoxAreas, listAreas, listCPM, listECPDiameter, listPerimeters, listCentroids, listECADiameter, listLBCDiameter, listFiberLength, listFiberWidth, listFittedEllipse, listMajorAxisLength, listMinorAxisLength, listIsConvex
+    global listGrainImages, listHeights, listWidths, listLFDiameter, listGFDiameter, listBoundingBoxAreas, listAreas, listCPM, listECPDiameter, listPerimeters, listCentroids, listECADiameter, listLBCDiameter, listHMDiameter, listVMDiameter, listLBRW, listLBRL, listFiberLength, listFiberWidth, listFittedEllipse, listMajorAxisLength, listMinorAxisLength, listIsConvex
  
     listDebugImages = list()
     listDebugTitles = list()
@@ -115,14 +180,18 @@ def analyze():
     listWidths = list()
     listBoundingBoxAreas = list()
     listAreas = list()
+    listLFDiameter = list()
+    listGFDiameter = list()
     listCPM = list()
     listECPDiameter = list()
-
     listPerimeters = list()
     listCentroids = list()
     listECADiameter = list()
     listLBCDiameter = list()
-
+    listHMDiameter = list()
+    listVMDiameter = list()
+    listLBRW = list()
+    listLBRL = list()
     listFiberLength = list()
     listFiberWidth = list()
     listFittedEllipse = list()
@@ -176,8 +245,11 @@ def analyze():
             listAreas.append(props.area * MICRO_METER_PER_PIXEL * MICRO_METER_PER_PIXEL)
             listBoundingBoxAreas.append(width * height)
 
-            # Least Feret’s Diameter (LFD), Feret’s Width: The smallest distance between two parallel lines that do not intersect the image. TODO
-            # Greatest Feret’s Diameter (GFD), Feret’s Length: The greatest distance between two parallel lines that do not intersect the image. TODO
+            # Least Feret’s Diameter (LFD), Feret’s Width: The smallest distance between two parallel lines that do not intersect the image.
+            # Greatest Feret’s Diameter (GFD), Feret’s Length: The greatest distance between two parallel lines that do not intersect the image.
+            (LFDiameter, GFDiameter) = feretsDiameters(contour)
+            listLFDiameter.append(LFDiameter * MICRO_METER_PER_PIXEL)
+            listGFDiameter.append(GFDiameter * MICRO_METER_PER_PIXEL)
 
             # Equivalent Circular Area Diameter (ECAD), Heywood’s Diameter: The diameter of a circle that has the same area as the image.
             diameter = math.sqrt(cv2.contourArea(contour) / math.pi) * 2 * MICRO_METER_PER_PIXEL
@@ -185,7 +257,7 @@ def analyze():
             if diameter < 50:
                 count += 1
 
-            # Least Bounding Circle (LBC): The smallest circle that encloses the image. TODO
+            # Least Bounding Circle (LBC): The smallest circle that encloses the image.
             (x0, y0), radius = cv2.minEnclosingCircle(contour)
             center = (int(x0), int(y0))
             #radius = int(radius)
@@ -202,14 +274,50 @@ def analyze():
             radius = imagePerimeter / (2 * math.pi)
             listECPDiameter.append(radius * 2 * MICRO_METER_PER_PIXEL)
 
-            #Horizontal Martin’s Diameter (HMD): The length of a line at horizontal direction that divides the image into two equal halves. TODO
-            #Vertical Martin’s Diameter (VMD): The length of a line at vertical direction that divides the image into two equal halves. TODO
-            #Least Bounding Rectangle Width (LBRW): The width of the smallest rectangle that encloses the image. TODO
-            #Least Bounding Rectangle Length (LBRL): The length of the smallest rectangle that encloses the image. TODO
+            # Horizontal Martin’s Diameter (HMD): The length of a line at horizontal direction that divides the image into two equal halves.
+            # Vertical Martin’s Diameter (VMD): The length of a line at vertical direction that divides the image into two equal halves.
+            cutArea = props.area / 2
+            accArea = 0
+            horizontalBreak = 0
+            verticalBreak = 0
+            for x in range(len(props.image)):
+                for y in range(len(props.image[0])):
+                    if props.image[x][y] > 0:
+                        accArea += 1
+                    if accArea >= cutArea:
+                        horizontalBreak = x
+                        break
+
+            accArea = 0
+            for y in range(len(props.image[0])):
+                for x in range(len(props.image)):
+                    if props.image[x][y] > 0:
+                        accArea += 1
+                    if accArea >= cutArea:
+                        verticalBreak = y
+                        break
+
+            horizontalDiameter = 0
+            verticalDiameter = 0
+            for pixel in props.image[x]:
+                if pixel > 0:
+                    horizontalDiameter += 1
+
+            for x, _ in enumerate(props.image):
+                if props.image[x][y] > 0:
+                    verticalDiameter += 1
+
+            listHMDiameter.append(horizontalDiameter * MICRO_METER_PER_PIXEL)
+            listVMDiameter.append(verticalDiameter * MICRO_METER_PER_PIXEL)
+
+            (x, y), (w, h), r = cv2.minAreaRect(contour)
+            # Least Bounding Rectangle Width (LBRW): The width of the smallest rectangle that encloses the image.
+            # Least Bounding Rectangle Length (LBRL): The length of the smallest rectangle that encloses the image.
+            listLBRW.append(w * MICRO_METER_PER_PIXEL)
+            listLBRL.append(h * MICRO_METER_PER_PIXEL)
 
             # Fiber Length (FL): The length of a rectangle that has the same area and perimeter as the image.
             # Fiber Width (FW): The width of a rectangle that has the same area and perimeter as the image.
-            (x, y), (w, h), r = cv2.minAreaRect(contour)
             P = 2 * (boundingBoxColMax - boundingBoxColMin) + 2 * (boundingBoxRowMax - boundingBoxRowMin)
             #print(str(x1) + " " + str(x2) + " " + str(y1) + " " + str(y2))
             #P = 2 * w + 2 * h
@@ -293,51 +401,148 @@ def analyze():
     print("Number of dirt grains:" + str(count))
     print("Number of dirt grains %:" + str(100*count/len(regions)))
 
-    # FiberLength data
+    # Write all x50 to excel
+    listHeights.sort()
+    listWidths.sort()
+    listLFDiameter.sort()
+    listGFDiameter.sort()
+    listECPDiameter.sort()
+    listECADiameter.sort()
+    listLBCDiameter.sort()
+    listHMDiameter.sort()
+    listVMDiameter.sort()
+    listLBRW.sort()
+    listLBRL.sort()
     listFiberLength.sort()
+    listFiberWidth.sort()
+    listMajorAxisLength.sort()
+    listMinorAxisLength.sort()
+
+    arrayListHeights = np.array(listHeights)
+    arrayListWidths = np.array(listWidths)
+    arrayListLFDiameter = np.array(listLFDiameter)
+    arrayListGFDiameter = np.array(listGFDiameter)
+    arrayListECPDiameter = np.array(listECPDiameter)
+    arrayListECADiameter = np.array(listECADiameter)
+    arrayListLBCDiameter = np.array(listLBCDiameter)
+    arrayListHMDiameter = np.array(listHMDiameter)
+    arrayListVMDiameter = np.array(listVMDiameter)
+    arrayListLBRW = np.array(listLBRW)
+    arrayListLBRL = np.array(listLBRL)
     arrayListFiberLength = np.array(listFiberLength)
-    x10 = np.percentile(arrayListFiberLength, 10)
-    x16 = np.percentile(arrayListFiberLength, 16)
-    x50 = np.percentile(arrayListFiberLength, 50)
-    x84 = np.percentile(arrayListFiberLength, 84)
-    x90 = np.percentile(arrayListFiberLength, 90)
-    x99 = np.percentile(arrayListFiberLength, 99)
+    arrayListFiberWidth = np.array(listFiberWidth)
+    arrayListMajorAxisLength = np.array(listMajorAxisLength)
+    arrayListMinorAxisLength = np.array(listMinorAxisLength)
 
-    Q1 = (listFiberLength[-1] + 1) / 4
-    Q2 = 2 * (listFiberLength[-1] + 1) / 4
-    Q3 = 3 * (listFiberLength[-1] + 1) / 4
+    x50Heights = np.percentile(arrayListHeights, 50)
+    x50Widths = np.percentile(arrayListWidths, 50)
+    x50LFDiameter = np.percentile(arrayListLFDiameter, 50)
+    x50GFDiameter = np.percentile(arrayListGFDiameter, 50)
+    x50ECPDiameter = np.percentile(arrayListECPDiameter, 50)
+    x50ECADiameter = np.percentile(arrayListECADiameter, 50)
+    x50LBCDiameter = np.percentile(arrayListLBCDiameter, 50)
+    x50HMDiameter = np.percentile(arrayListHMDiameter, 50)
+    x50VMDiameter = np.percentile(arrayListVMDiameter, 50)
+    x50LBRW = np.percentile(arrayListLBRW, 50)   
+    x50LBRL = np.percentile(arrayListLBRL, 50)    
+    x50FiberLength = np.percentile(arrayListFiberLength, 50)   
+    x50FiberWidth = np.percentile(arrayListFiberWidth, 50)
+    x50MajorAxisLength = np.percentile(arrayListMajorAxisLength, 50)
+    x50MinorAxisLength = np.percentile(arrayListMinorAxisLength, 50)
 
-    f = np.fft.fft2(imagePreProcessed)
-    fshift = np.fft.fftshift(f)
-    magnitude_spectrum = 20*np.log(np.abs(fshift))
+    listMeasures = list()
+    listMeasures.append(x50Heights)
+    listMeasures.append(x50Widths)
+    listMeasures.append(x50LFDiameter )
+    listMeasures.append(x50GFDiameter )
+    listMeasures.append(x50ECPDiameter)
+    listMeasures.append(x50ECADiameter)
+    listMeasures.append(x50LBCDiameter)
+    listMeasures.append(x50HMDiameter)
+    listMeasures.append(x50VMDiameter)
+    listMeasures.append(x50LBRW)
+    listMeasures.append(x50LBRL)
+    listMeasures.append(x50FiberLength)
+    listMeasures.append(x50FiberWidth)
+    listMeasures.append(x50MajorAxisLength)
+    listMeasures.append(x50MinorAxisLength)
+
+    temp3Deviation = X503TEMP/float(X50REF)*100 - 100
+
+    excel_sheet.write(EXCEL_ROW, 1, str(FILENAME))
+    excel_sheet.write(EXCEL_ROW, 2, str(X50REF))
+    excel_sheet.write(EXCEL_ROW, 3, str(X503TEMP))
+    if math.fabs(temp3Deviation) < 10:
+        excel_sheet.write(EXCEL_ROW, 4, temp3Deviation, formatGreen)
+    else:
+        excel_sheet.write(EXCEL_ROW, 4, temp3Deviation, formatRed)
+
+    for idx, measure in enumerate(listMeasures):
+        measureDeviation = measure/float(X50REF)*100 - 100
+
+
+        excel_sheet.write(EXCEL_ROW, idx*2+5, measure) # TODO
+        excel_sheet.write(EXCEL_ROW, idx*2+5+1, str('=ABS($A$2*OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())),0,-1)/OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-4-idx*2) + ')*100-100)'))
+                                                    #=ABS($A$2*OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())),0,-1)/OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())),0,-4))*100-100
+
+        excel_sheet.conditional_format(EXCEL_ROW, idx*2+5+1, EXCEL_ROW, idx*2+5+1, {'type': 'cell',
+                                                   'criteria': 'between',
+                                                   'minimum': -10,
+                                                   'maximum': 10,
+                                                   'format': formatGreen})
+        excel_sheet.conditional_format(EXCEL_ROW, idx*2+5+1, EXCEL_ROW, idx*2+5+1, {'type': 'cell',
+                                                   'criteria': 'between',
+                                                   'minimum': '-ABS(OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-2-idx*2) + '))',
+                                                   'maximum': 'ABS(OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-2-idx*2) + '))',
+                                                   'format': formatYellow})
+        excel_sheet.conditional_format(EXCEL_ROW, idx*2+5+1, EXCEL_ROW, idx*2+5+1, {'type': 'cell',
+                                                   'criteria': 'not between',
+                                                   'minimum': '-ABS(OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-2-idx*2) + '))',
+                                                   'maximum': 'ABS(OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-2-idx*2) + '))',
+                                                   'format': formatRed})
+
+        #if math.fabs(measureDeviation) < math.fabs(temp3Deviation) and math.fabs(measureDeviation) < 10:
+        #    excel_sheet.write(EXCEL_ROW, idx+5, str(measureDeviation), styleGreen)
+        #elif math.fabs(measureDeviation) < math.fabs(temp3Deviation):
+        #    excel_sheet.write(EXCEL_ROW, idx+5, str(measureDeviation), styleYellow)
+        #else:
+        #    excel_sheet.write(EXCEL_ROW, idx+5, str(measureDeviation), styleRed)
+
+    #Q1 = (arrayListMeasureLength[-1] + 1) / 4
+    #Q2 = 2 * (arrayListMeasureLength[-1] + 1) / 4
+    #Q3 = 3 * (arrayListMeasureLength[-1] + 1) / 4
+
+    #f = np.fft.fft2(imagePreProcessed)
+    #fshift = np.fft.fftshift(f)
+    #magnitude_spectrum = 20*np.log(np.abs(fshift))
     #plt.plot(magnitude_spectrum)
     #plt.show()
 
-    laplacian = cv2.Laplacian(imagePreProcessed, 32)
-    bluriness = magnitude_spectrum.var()
-    print("cv2.CV_64F = " + str(cv2.CV_64F))
+    #laplacian = cv2.Laplacian(imagePreProcessed, 32)
+    #bluriness = magnitude_spectrum.var()
+    #print("cv2.CV_64F = " + str(cv2.CV_64F))
 
     print("\n\n\n##### " + str(FILENAME) + " # " + str(X50REF) + " #####")
-    print("3TEMP x50: " + str(X503TEMP) + "   " + "Deviation %: " + str(X503TEMP/float(X50REF)*100 - 100))
-    print("      x50: " + str(x50) + "   " + "Deviation %: " + str(x50/float(X50REF)*100 - 100))
+    #print("3TEMP x50: " + str(X503TEMP) + "   " + "Deviation %: " + str(X503TEMP/float(X50REF)*100 - 100))
+    #print("      x50: " + str(x50) + "   " + "Deviation %: " + str(x50/float(X50REF)*100 - 100))
 
-    Sauter3 = 0
-    Sauter2 = 0
-    for a in listECADiameter:
-        Sauter3 += a**3
-        Sauter2 += a**2
-    Sauter32 = Sauter3 / Sauter2
+    #Sauter3 = 0
+    #Sauter2 = 0
+    #for a in listECADiameter:
+    #    Sauter3 += a**3
+    #    Sauter2 += a**2
+    #Sauter32 = Sauter3 / Sauter2
 
-    print("Sauter32: " + str(Sauter32))
+    #print("Sauter32: " + str(Sauter32))
 
-    print("")
-    print("Blur Score: " + str(bluriness))
-    print("Measured x10: " + str(x10))
-    print("Measured x16: " + str(x16))
-    print("Measured x50: " + str(x50))
-    print("Measured x84: " + str(x84))
-    print("Measured x90: " + str(x90))
-    print("Measured x99: " + str(x99))
+    #print("")
+    #print("Blur Score: " + str(bluriness))
+    #print("Measured x10: " + str(x10))
+    #print("Measured x16: " + str(x16))
+    #print("Measured x50: " + str(x50))
+    #print("Measured x84: " + str(x84))
+    #print("Measured x90: " + str(x90))
+    #print("Measured x99: " + str(x99))
     
     #plt.plot(laplacian)
     #plt.show()
@@ -351,7 +556,8 @@ def analyze():
     if (DEBUG_PLOT):
         plotImages()
 
-    #plotData()
+    if (DEBUG_DATA):
+        plotData()
 
 def preProcessImage(inputImage):
     ### Aquired image ###
@@ -554,22 +760,41 @@ def plotData():
     # Compact Data Plot
     listHeights.sort()
     listWidths.sort()
+    listLFDiameter.sort()
+    listGFDiameter.sort()
     listECPDiameter.sort()
     listLBCDiameter.sort()
+    listHMDiameter.sort()
+    listVMDiameter.sort()
+    listLBRW.sort()
+    listLBRL.sort()
     listFiberLength.sort()
     listFiberWidth.sort()
     listMajorAxisLength.sort()
     listMinorAxisLength.sort()
     plt.hist(listHeights, bins=100000, density=True, histtype='step', cumulative=True)
     plt.hist(listWidths, bins=100000, density=True, histtype='step', cumulative=True)
+    plt.hist(listLFDiameter, bins=100000, density=True, histtype='step', cumulative=True)
+    plt.hist(listGFDiameter, bins=100000, density=True, histtype='step', cumulative=True)
     plt.hist(listECPDiameter, bins=100000, density=True, histtype='step', cumulative=True)
     plt.hist(listLBCDiameter, bins=100000, density=True, histtype='step', cumulative=True)
+    plt.hist(listHMDiameter, bins=100000, density=True, histtype='step', cumulative=True)
+    plt.hist(listVMDiameter, bins=100000, density=True, histtype='step', cumulative=True)
+    plt.hist(listLBRW, bins=100000, density=True, histtype='step', cumulative=True)
+    plt.hist(listLBRL, bins=100000, density=True, histtype='step', cumulative=True)
     plt.hist(listFiberLength, bins=100000, density=True, histtype='step', cumulative=True)
     plt.hist(listFiberWidth, bins=100000, density=True, histtype='step', cumulative=True)
     plt.hist(listMajorAxisLength, bins=100000, density=True, histtype='step', cumulative=True)
     plt.hist(listMinorAxisLength, bins=100000, density=True, histtype='step', cumulative=True)
     plt.title('Diameters')
-    plt.legend(['Height', 'Width', 'ECPD', 'LBCD', 'Fiber Length', 'Fiber Width', 'Major Axis', 'Minor Axis'], loc='upper left')
+    plt.legend(['Height', 'Width', 
+        'Least Feret', 'Greatest Feret',
+        'Equivalent Circle Perimeter', 'Least Bounding Circle',
+        'Horizontal Martin', 'Vertical Martin',
+        'Least Bounding Rectangle Width', 'Least Bounding Rectangle Height',
+        'Fiber Length', 'Fiber Width',
+        'Major Axis', 'Minor Axis'],
+        loc='upper left')
     plt.axvline(x=float(X50REF), color='red')
     plt.axhline(y=0.5, color='red')
     plt.grid(True)
@@ -667,9 +892,44 @@ def seg_intersect(a1,a2, b1,b2) :
     db = b2-b1
     dp = a1-b1
     dap = perp(da)
-    denom = dot( dap, db)
-    num = dot( dap, dp )
+    denom = dot(dap, db)
+    num = dot(dap, dp)
     return (num / denom.astype(float))*db + b1
+
+def feretsDiameters(hull, step=1):
+    #step = 2 * (math.pi/180)
+    hull = np.array(hull)
+    theta = np.degrees(step)
+    c, s = np.cos(theta), np.sin(theta)
+    rotationMatrix = np.array(((c, -s), (s, c)))
+    maxDiameter = -math.inf
+    minDiameter = math.inf
+    #print("Hull: " + str(hull))
+    #print("RotationMatrix: " + str(rotationMatrix))
+
+    for angle in range(0, 90, step):
+        theta = np.radians(angle)
+        c, s = np.cos(theta), np.sin(theta)
+        rotationMatrix = np.array(((c, -s), (s, c)))
+
+        for x, point in enumerate(hull):
+            hull[x] = np.dot(hull[x], rotationMatrix)
+
+        _, _, w, h = cv2.boundingRect(hull)
+        if minDiameter > w:
+            minDiameter = w
+        if minDiameter > h:
+            minDiameter = h
+        if maxDiameter < w:
+            maxDiameter = w
+        if maxDiameter < h:
+            maxDiameter = h
+
+    return (minDiameter, maxDiameter)
+
+
+
+
 
 
 
@@ -678,16 +938,17 @@ def seg_intersect(a1,a2, b1,b2) :
 
 ##### MAIN ####
 def main():
-    global DEBUG_FILTERING, DEBUG_SEGMENTING, DEBUG_EDITING, DEBUG_PLOT, FILENAME, X50REF, X503TEMP
+    global DEBUG_FILTERING, DEBUG_SEGMENTING, DEBUG_EDITING, DEBUG_PLOT, DEBUG_DATA, FILENAME, X50REF, X503TEMP, EXCEL_ROW
     DEBUG_FILTERING = False
     DEBUG_SEGMENTING = False
     DEBUG_EDITING = False
     DEBUG_PLOT = False
+    DEBUG_DATA = False
     DEBUG_TEST_ALL = False
 
     # parse command line options
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["debug", "plot", "filename=", "x50=", "test-all"])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["debug", "plot", "data", "filename=", "x50=", "test-all"])
     except getopt.GetoptError as err:
         print(err)
         print("error")
@@ -705,6 +966,9 @@ def main():
         elif o in ("--plot"):
             print("--plot")
             DEBUG_PLOT = True
+        elif o in ("--data"):
+            print("--data")
+            DEBUG_DATA = True
         elif o in ("--filename="):
             FILENAME = "Images/" + a + "/latest0.jpg"
         elif o in ("--x50="):
@@ -755,13 +1019,17 @@ def main():
         listTest.append((11216, 405, 443))
         listTest.append((11222, 415, 453))
 
+        EXCEL_ROW = 0
         for (file, temp3, expected) in listTest:
-            FILENAME = "Images/" + str(file) + "/latest0.jpg"
+            FILENAME = "images/" + str(file) + "/latest0.jpg"
             X503TEMP = temp3
             X50REF = expected
+            EXCEL_ROW += 1
             analyze()
     else:
         analyze()
+
+    wb.close()
 
 def process(arg):
     print(arg)
