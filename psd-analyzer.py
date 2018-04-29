@@ -6,6 +6,7 @@ import cv2
 import statistics
 import lmfit
 import scipy
+from scipy.interpolate import interp1d
 
 from xlsxwriter import Workbook #, easyxf
 
@@ -35,10 +36,18 @@ global FILENAME
 FILENAME = 'images/image/latest0.jpg'
 global X50REF
 global X503TEMP
+global CDF_PERCENTILE_REF
 X50REF = 1
 X503TEMP = 1
+CDF_PERCENTILE_REF = []
+CDF_X0_REF = [18, 22, 26, 30, 36, 44, 52, 62, # TODO Histogram och standard variation
+            74, 86, 100, 120, 150, 180, 210, 250,
+            300, 360, 420, 500, 600, 720, 860, 1020,
+            1220, 1460, 1740, 2060, 2460, 2940, 3500]
 # TODO um / pixel microMeterPerPixel = 20.0 # 19.8
-MICRO_METER_PER_PIXEL = 1 #19.8 #17.39
+MICRO_METER_PER_PIXEL = 17.4 #18.15 * 2.0#19.8 #17.39
+DIAMETER_THRESHOLD_LOW = 2 * MICRO_METER_PER_PIXEL
+DIAMETER_THRESHOLD_HIGH = 5000#1460
 
 # Excel setup
 wb = Workbook('output.xlsx')
@@ -59,48 +68,78 @@ global EXCEL_ROW
 EXCEL_ROW = 1
 
 excel_sheet.write(0, 0, 'Micrometer / Pixel')
-excel_sheet.write(1, 0, MICRO_METER_PER_PIXEL)
+excel_sheet.write(1, 0, float(1.0))
 excel_sheet.write(0, 1, 'Filename')
 excel_sheet.write(0, 2, 'Reference x50')
 excel_sheet.write(0, 3, '3TEMP x50')
 excel_sheet.write(0, 4, '3TEMP Deviation')
-
 excel_sheet.write(0, 5, 'Heights x50')
-excel_sheet.write(0, 6, 'Heights Deviation')
-excel_sheet.write(0, 7, 'Widths x50')
-excel_sheet.write(0, 8, 'Widths Deviation')
-excel_sheet.write(0, 9, 'Least Feret Diameter x50')
-excel_sheet.write(0, 10, 'Least Feret Diameter Deviation')
-excel_sheet.write(0, 11, 'Greatest Feret Diameter x50')
-excel_sheet.write(0, 12, 'Greatest Feret Diameter Deviation')
-excel_sheet.write(0, 13, 'Equivalent Circle Perimeter Diameter x50')
-excel_sheet.write(0, 14, 'Equivalent Circle Perimeter Diameter Deviation')
-excel_sheet.write(0, 15, 'Equivalent Circle Area Diameter x50')
-excel_sheet.write(0, 16, 'Equivalent Circle Area Diameter Deviation')
-excel_sheet.write(0, 17, 'Least Bounding Circle Diameter x50')
-excel_sheet.write(0, 18, 'Least Bounding Circle Diameter Deviation')
-excel_sheet.write(0, 19, 'Horizontal Martin Diameter x50')
-excel_sheet.write(0, 20, 'Horizontal Martin Diameter Deviation')
-excel_sheet.write(0, 21, 'Vertical Martin Diameter x50')
-excel_sheet.write(0, 22, 'Vertical Martin Diameter Deviation')
-excel_sheet.write(0, 23, 'Least Bounding Rectagle Width x50')
-excel_sheet.write(0, 24, 'Least Bounding Rectagle Width Deviation')
-excel_sheet.write(0, 25, 'Least Bounding Rectangle Length x50')
-excel_sheet.write(0, 26, 'Least Bounding Rectangle Length Deviation')
-excel_sheet.write(0, 27, 'Fiber Length x50')
-excel_sheet.write(0, 28, 'Fiber Length Deviation')
-excel_sheet.write(0, 29, 'Fiber Width x50')
-excel_sheet.write(0, 30, 'Fiber Width Deviation')
-excel_sheet.write(0, 31, 'Major Axis Length x50')
-excel_sheet.write(0, 32, 'Major Axis Length Deviation')
-excel_sheet.write(0, 33, 'Minor Axis Length x50')
-excel_sheet.write(0, 34, 'Minor Axis Length Deviation')
+excel_sheet.write(0, 6, 'Deviation')
+excel_sheet.write(0, 7, 'Standard Deviation')
+excel_sheet.write(0, 8, 'Variance')
+excel_sheet.write(0, 9, 'Widths x50')
+excel_sheet.write(0, 10, 'Deviation')
+excel_sheet.write(0, 11, 'Standard Deviation')
+excel_sheet.write(0, 12, 'Variance')
+excel_sheet.write(0, 13, 'Least Feret Diameter x50')
+excel_sheet.write(0, 14, 'Deviation')
+excel_sheet.write(0, 15, 'Standard Deviation')
+excel_sheet.write(0, 16, 'Variance')
+excel_sheet.write(0, 17, 'Greatest Feret Diameter x50')
+excel_sheet.write(0, 18, 'Deviation')
+excel_sheet.write(0, 19, 'Standard Deviation')
+excel_sheet.write(0, 20, 'Variance')
+excel_sheet.write(0, 21, 'Equivalent Circle Perimeter Diameter x50')
+excel_sheet.write(0, 22, 'Deviation')
+excel_sheet.write(0, 23, 'Standard Deviation')
+excel_sheet.write(0, 24, 'Variance')
+excel_sheet.write(0, 25, 'Equivalent Circle Area Diameter x50')
+excel_sheet.write(0, 26, 'Deviation')
+excel_sheet.write(0, 27, 'Standard Deviation')
+excel_sheet.write(0, 28, 'Variance')
+excel_sheet.write(0, 29, 'Least Bounding Circle Diameter x50')
+excel_sheet.write(0, 30, 'Deviation')
+excel_sheet.write(0, 31, 'Standard Deviation')
+excel_sheet.write(0, 32, 'Variance')
+excel_sheet.write(0, 33, 'Horizontal Martin Diameter x50')
+excel_sheet.write(0, 34, 'Deviation')
+excel_sheet.write(0, 35, 'Standard Deviation')
+excel_sheet.write(0, 36, 'Variance')
+excel_sheet.write(0, 37, 'Vertical Martin Diameter x50')
+excel_sheet.write(0, 38, 'Deviation')
+excel_sheet.write(0, 39, 'Standard Deviation')
+excel_sheet.write(0, 40, 'Variance')
+excel_sheet.write(0, 41, 'Least Bounding Rectagle Width x50')
+excel_sheet.write(0, 42, 'Deviation')
+excel_sheet.write(0, 43, 'Standard Deviation')
+excel_sheet.write(0, 44, 'Variance')
+excel_sheet.write(0, 45, 'Least Bounding Rectangle Length x50')
+excel_sheet.write(0, 46, 'Deviation')
+excel_sheet.write(0, 47, 'Standard Deviation')
+excel_sheet.write(0, 48, 'Variance')
+excel_sheet.write(0, 49, 'Fiber Length x50')
+excel_sheet.write(0, 50, 'Deviation')
+excel_sheet.write(0, 51, 'Standard Deviation')
+excel_sheet.write(0, 52, 'Variance')
+excel_sheet.write(0, 53, 'Fiber Width x50')
+excel_sheet.write(0, 54, 'Deviation')
+excel_sheet.write(0, 55, 'Standard Deviation')
+excel_sheet.write(0, 56, 'Variance')
+excel_sheet.write(0, 57, 'Major Axis Length x50')
+excel_sheet.write(0, 58, 'Deviation')
+excel_sheet.write(0, 59, 'Standard Deviation')
+excel_sheet.write(0, 60, 'Variance')
+excel_sheet.write(0, 61, 'Minor Axis Length x50')
+excel_sheet.write(0, 62, 'Deviation')
+excel_sheet.write(0, 63, 'Standard Deviation')
+excel_sheet.write(0, 64, 'Variance')
 
 global DEBUG_FILTERING
 global DEBUG_SEGMENTING
 global DEBUG_EDITING
 global DEBUG_PLOT
 global DEBUG_DATA
+global DEBUG_STUDENTS_TTEST
 
 HYBRID_FILTER = True
 DEBUG_WATERSHED = True
@@ -113,7 +152,7 @@ global imageEdited
 global labels
 global distance
 
-global listDebugImages, listDebugTitles
+global listDebugImages, listDebugImageTitles, listDebugMeasurementTitles
 
 global listGrainImages
 global listHeights
@@ -141,11 +180,12 @@ global listIsConvex
 
 def analyze():
     global imageOriginal, imagePreProcessed, imageFiltered, imageSegmented, imageEdited
-    global listDebugImages, listDebugTitles
+    global listDebugImages, listDebugImageTitles, listDebugMeasurementTitles
     global listGrainImages, listHeights, listWidths, listLFDiameter, listGFDiameter, listBoundingBoxAreas, listAreas, listCPM, listECPDiameter, listPerimeters, listCentroids, listECADiameter, listLBCDiameter, listHMDiameter, listVMDiameter, listLBRW, listLBRL, listFiberLength, listFiberWidth, listFittedEllipse, listMajorAxisLength, listMinorAxisLength, listIsConvex
  
     listDebugImages = list()
-    listDebugTitles = list()
+    listDebugImageTitles = list()
+    listDebugMeasurementTitles = list()
 
     ### Load image ###
     imageOriginal = loadImage()
@@ -254,7 +294,7 @@ def analyze():
             # Equivalent Circular Area Diameter (ECAD), Heywood’s Diameter: The diameter of a circle that has the same area as the image.
             diameter = math.sqrt(cv2.contourArea(contour) / math.pi) * 2 * MICRO_METER_PER_PIXEL
             listECADiameter.append(diameter)
-            if diameter < 50:
+            if diameter < DIAMETER_THRESHOLD_LOW * 2 or diameter > DIAMETER_THRESHOLD_HIGH:
                 count += 1
 
             # Least Bounding Circle (LBC): The smallest circle that encloses the image.
@@ -396,11 +436,6 @@ def analyze():
 
             plt.show()
 
-    # Useful information / statistics
-    print("Total number of grains: " + str(len(regions)))
-    print("Number of dirt grains:" + str(count))
-    print("Number of dirt grains %:" + str(100*count/len(regions)))
-
     # Write all x50 to excel
     listHeights.sort()
     listWidths.sort()
@@ -434,6 +469,38 @@ def analyze():
     arrayListMajorAxisLength = np.array(listMajorAxisLength)
     arrayListMinorAxisLength = np.array(listMinorAxisLength)
 
+    listMeasures = list()
+    listMeasures.append(arrayListHeights)
+    listDebugMeasurementTitles.append("Height")
+    listMeasures.append(arrayListWidths)
+    listDebugMeasurementTitles.append("Width")
+    listMeasures.append(arrayListLFDiameter)
+    listDebugMeasurementTitles.append("Least Feret Diameter")
+    listMeasures.append(arrayListGFDiameter)
+    listDebugMeasurementTitles.append("Greatest Feret Diameter")
+    listMeasures.append(arrayListECPDiameter)
+    listDebugMeasurementTitles.append("Equivalent Circle Perimeter Diameter")
+    listMeasures.append(arrayListECADiameter)
+    listDebugMeasurementTitles.append("Equivalent Circle Area Diameter")
+    listMeasures.append(arrayListLBCDiameter)
+    listDebugMeasurementTitles.append("Least Bounding Circle Diameter")
+    listMeasures.append(arrayListHMDiameter)
+    listDebugMeasurementTitles.append("Horizontal Martin Diameter")
+    listMeasures.append(arrayListVMDiameter)
+    listDebugMeasurementTitles.append("Vertical Martin Diameter")
+    listMeasures.append(arrayListLBRW)
+    listDebugMeasurementTitles.append("Least Bounding Rectangle Width")
+    listMeasures.append(arrayListLBRL)
+    listDebugMeasurementTitles.append("Least Bounding Rectangle Height")
+    listMeasures.append(arrayListFiberLength)
+    listDebugMeasurementTitles.append("Fiber Length")
+    listMeasures.append(arrayListFiberWidth)
+    listDebugMeasurementTitles.append("Fiber Width")
+    listMeasures.append(arrayListMajorAxisLength)
+    listDebugMeasurementTitles.append("Major Axis")
+    listMeasures.append(arrayListMinorAxisLength)
+    listDebugMeasurementTitles.append("Minor Axis")
+
     x50Heights = np.percentile(arrayListHeights, 50)
     x50Widths = np.percentile(arrayListWidths, 50)
     x50LFDiameter = np.percentile(arrayListLFDiameter, 50)
@@ -450,22 +517,22 @@ def analyze():
     x50MajorAxisLength = np.percentile(arrayListMajorAxisLength, 50)
     x50MinorAxisLength = np.percentile(arrayListMinorAxisLength, 50)
 
-    listMeasures = list()
-    listMeasures.append(x50Heights)
-    listMeasures.append(x50Widths)
-    listMeasures.append(x50LFDiameter )
-    listMeasures.append(x50GFDiameter )
-    listMeasures.append(x50ECPDiameter)
-    listMeasures.append(x50ECADiameter)
-    listMeasures.append(x50LBCDiameter)
-    listMeasures.append(x50HMDiameter)
-    listMeasures.append(x50VMDiameter)
-    listMeasures.append(x50LBRW)
-    listMeasures.append(x50LBRL)
-    listMeasures.append(x50FiberLength)
-    listMeasures.append(x50FiberWidth)
-    listMeasures.append(x50MajorAxisLength)
-    listMeasures.append(x50MinorAxisLength)
+    listX50Measures = list()
+    listX50Measures.append(x50Heights)
+    listX50Measures.append(x50Widths)
+    listX50Measures.append(x50LFDiameter )
+    listX50Measures.append(x50GFDiameter )
+    listX50Measures.append(x50ECPDiameter)
+    listX50Measures.append(x50ECADiameter)
+    listX50Measures.append(x50LBCDiameter)
+    listX50Measures.append(x50HMDiameter)
+    listX50Measures.append(x50VMDiameter)
+    listX50Measures.append(x50LBRW)
+    listX50Measures.append(x50LBRL)
+    listX50Measures.append(x50FiberLength)
+    listX50Measures.append(x50FiberWidth)
+    listX50Measures.append(x50MajorAxisLength)
+    listX50Measures.append(x50MinorAxisLength)
 
     temp3Deviation = X503TEMP/float(X50REF)*100 - 100
 
@@ -478,35 +545,34 @@ def analyze():
         excel_sheet.write(EXCEL_ROW, 4, temp3Deviation, formatRed)
 
     for idx, measure in enumerate(listMeasures):
-        measureDeviation = measure/float(X50REF)*100 - 100
+        #measureDeviation = measure/float(X50REF)*100 - 100
+        x50measure = np.percentile(measure, 50)
+        NUMBER_OF_DATA_ENTRIES = 4
+        NUMBER_OF_FIXED_ENTRIES = 5
 
+        excel_sheet.write(EXCEL_ROW, idx*NUMBER_OF_DATA_ENTRIES+NUMBER_OF_FIXED_ENTRIES, x50measure) # TODO
+        excel_sheet.write(EXCEL_ROW, idx*NUMBER_OF_DATA_ENTRIES+NUMBER_OF_FIXED_ENTRIES+1, str('=ABS($A$2*OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())),0,-1)/OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-4-idx*NUMBER_OF_DATA_ENTRIES) + ')*100-100)'))
+        excel_sheet.write(EXCEL_ROW, idx*NUMBER_OF_DATA_ENTRIES+NUMBER_OF_FIXED_ENTRIES+2, str(statistics.pstdev(measure)))
+        excel_sheet.write(EXCEL_ROW, idx*NUMBER_OF_DATA_ENTRIES+NUMBER_OF_FIXED_ENTRIES+3, str(statistics.pvariance(measure)))
 
-        excel_sheet.write(EXCEL_ROW, idx*2+5, measure) # TODO
-        excel_sheet.write(EXCEL_ROW, idx*2+5+1, str('=ABS($A$2*OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())),0,-1)/OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-4-idx*2) + ')*100-100)'))
-                                                    #=ABS($A$2*OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())),0,-1)/OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())),0,-4))*100-100
-
-        excel_sheet.conditional_format(EXCEL_ROW, idx*2+5+1, EXCEL_ROW, idx*2+5+1, {'type': 'cell',
+        excel_sheet.conditional_format(EXCEL_ROW, idx*NUMBER_OF_DATA_ENTRIES+NUMBER_OF_FIXED_ENTRIES+1, EXCEL_ROW, idx*NUMBER_OF_DATA_ENTRIES+NUMBER_OF_FIXED_ENTRIES+1, {'type': 'cell',
                                                    'criteria': 'between',
                                                    'minimum': -10,
                                                    'maximum': 10,
                                                    'format': formatGreen})
-        excel_sheet.conditional_format(EXCEL_ROW, idx*2+5+1, EXCEL_ROW, idx*2+5+1, {'type': 'cell',
+        excel_sheet.conditional_format(EXCEL_ROW, idx*NUMBER_OF_DATA_ENTRIES+NUMBER_OF_FIXED_ENTRIES+1, EXCEL_ROW, idx*NUMBER_OF_DATA_ENTRIES+NUMBER_OF_FIXED_ENTRIES+1, {'type': 'cell',
                                                    'criteria': 'between',
-                                                   'minimum': '-ABS(OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-2-idx*2) + '))',
-                                                   'maximum': 'ABS(OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-2-idx*2) + '))',
+                                                   'minimum': '-ABS(OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-2-idx*NUMBER_OF_DATA_ENTRIES) + '))',
+                                                   'maximum': 'ABS(OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-2-idx*NUMBER_OF_DATA_ENTRIES) + '))',
                                                    'format': formatYellow})
-        excel_sheet.conditional_format(EXCEL_ROW, idx*2+5+1, EXCEL_ROW, idx*2+5+1, {'type': 'cell',
+        excel_sheet.conditional_format(EXCEL_ROW, idx*NUMBER_OF_DATA_ENTRIES+NUMBER_OF_FIXED_ENTRIES+1, EXCEL_ROW, idx*NUMBER_OF_DATA_ENTRIES+NUMBER_OF_FIXED_ENTRIES+1, {'type': 'cell',
                                                    'criteria': 'not between',
-                                                   'minimum': '-ABS(OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-2-idx*2) + '))',
-                                                   'maximum': 'ABS(OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-2-idx*2) + '))',
+                                                   'minimum': '-ABS(OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-2-idx*NUMBER_OF_DATA_ENTRIES) + '))',
+                                                   'maximum': 'ABS(OFFSET(INDIRECT(ADDRESS(ROW(),COLUMN())), 0, ' + str(-2-idx*NUMBER_OF_DATA_ENTRIES) + '))',
                                                    'format': formatRed})
 
-        #if math.fabs(measureDeviation) < math.fabs(temp3Deviation) and math.fabs(measureDeviation) < 10:
-        #    excel_sheet.write(EXCEL_ROW, idx+5, str(measureDeviation), styleGreen)
-        #elif math.fabs(measureDeviation) < math.fabs(temp3Deviation):
-        #    excel_sheet.write(EXCEL_ROW, idx+5, str(measureDeviation), styleYellow)
-        #else:
-        #    excel_sheet.write(EXCEL_ROW, idx+5, str(measureDeviation), styleRed)
+    if (DEBUG_STUDENTS_TTEST):
+        students_ttest(listMeasures)
 
     #Q1 = (arrayListMeasureLength[-1] + 1) / 4
     #Q2 = 2 * (arrayListMeasureLength[-1] + 1) / 4
@@ -526,6 +592,11 @@ def analyze():
     #print("3TEMP x50: " + str(X503TEMP) + "   " + "Deviation %: " + str(X503TEMP/float(X50REF)*100 - 100))
     #print("      x50: " + str(x50) + "   " + "Deviation %: " + str(x50/float(X50REF)*100 - 100))
 
+    # Useful information / statistics
+    print("Total number of grains: " + str(len(regions)))
+    print("Number of dirt grains:" + str(count))
+    print("Number of dirt grains %:" + str(100*count/len(regions)))
+
     #Sauter3 = 0
     #Sauter2 = 0
     #for a in listECADiameter:
@@ -536,6 +607,8 @@ def analyze():
     #print("Sauter32: " + str(Sauter32))
 
     #print("")
+    #print(listGFDiameter)
+    #print(listECADiameter)
     #print("Blur Score: " + str(bluriness))
     #print("Measured x10: " + str(x10))
     #print("Measured x16: " + str(x16))
@@ -547,8 +620,8 @@ def analyze():
     #plt.plot(laplacian)
     #plt.show()
 
-    #print("Standard Deviation: " + str(statistics.pstdev(listFiberLength)))
-    #print("Variance: " + str(statistics.pvariance(listFiberLength)))
+    print("Standard Deviation: " + str(statistics.pstdev(listFiberLength)))
+    print("Variance: " + str(statistics.pvariance(listFiberLength)))
     #print("Q1: " + str(Q1))
     #print("Q2: " + str(Q2))
     #print("Q3: " + str(Q3))
@@ -567,12 +640,12 @@ def preProcessImage(inputImage):
     scale = 1
     image = cv2.resize(image,None,fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
     listDebugImages.append(image)
-    listDebugTitles.append('Scaled Image')
+    listDebugImageTitles.append('Scaled Image')
 
     # Convert to grayscale
     image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) #color.rgb2gray(image)
     listDebugImages.append(image)
-    listDebugTitles.append('Grayscale Image')
+    listDebugImageTitles.append('Grayscale Image')
 
     return image
 
@@ -594,23 +667,23 @@ def filterImage(inputImage):
 
         image = median(image, selem=cross)
         listDebugImages.append(image)
-        listDebugTitles.append('Hybrid Median Filter 1')
+        listDebugImageTitles.append('Hybrid Median Filter 1')
         image = median(image, selem=xmask)
         listDebugImages.append(image)
-        listDebugTitles.append('Hybrid Median Filter 2')
+        listDebugImageTitles.append('Hybrid Median Filter 2')
         image = median(image, selem=center)
         listDebugImages.append(image)
-        listDebugTitles.append('Hybrid Median Filter 3')
+        listDebugImageTitles.append('Hybrid Median Filter 3')
     else:
         # Median filter
         image = median(image)
         listDebugImages.append(image)
-        listDebugTitles.append('Median Filter')
+        listDebugImageTitles.append('Median Filter')
 
     # Contrast filter
     image = enhance_contrast(image, disk(5))
     listDebugImages.append(image)
-    listDebugTitles.append('Contrast Filter')
+    listDebugImageTitles.append('Contrast Filter')
  
     return image
 
@@ -626,9 +699,9 @@ def segmentImage(inputImage):
     #threshold = skimage.filters.threshold_local(image, 3)
     
     # Binary
-    image = inputImage <= threshold #TODO Får inte samma värde som Anders, belysningen räknas in här
+    image = inputImage <= 50#threshold #TODO Får inte samma värde som Anders, belysningen räknas in här
     listDebugImages.append(image)
-    listDebugTitles.append('Binary Threshold')
+    listDebugImageTitles.append('Binary Threshold')
 
     if (DEBUG_SEGMENTING):
         fig, axes = plt.subplots(ncols=3, figsize=(8, 2.5))
@@ -660,7 +733,7 @@ def editImage(inputImage):
     #kernel = np.ones((3,3),np.uint8)
     #image = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
     #listDebugImages.append(image)
-    #listDebugTitles.append('Opening')
+    #listDebugImageTitles.append('Opening')
 
     # Fill interior TODO
     #seed = np.copy(image)
@@ -679,17 +752,17 @@ def editImage(inputImage):
     # Separate objects / Watershedding
     distance = ndi.distance_transform_edt(image)
     listDebugImages.append(distance)
-    listDebugTitles.append('Distance')
+    listDebugImageTitles.append('Distance')
 
     local_maxi = peak_local_max(distance, indices=False, footprint=np.ones((3, 3)), labels=image)
     listDebugImages.append(local_maxi)
-    listDebugTitles.append('Local Maxi')
+    listDebugImageTitles.append('Local Maxi')
 
     markers = ndi.label(local_maxi)[0]
 
     labels = watershed(-distance, markers, mask=image)
     listDebugImages.append(labels)
-    listDebugTitles.append('Watershed')
+    listDebugImageTitles.append('Watershed')
 
     if (DEBUG_EDITING):
         fig, axes = plt.subplots(ncols=4, figsize=(9, 3), sharex=True, sharey=True, subplot_kw={'adjustable': 'box-forced'})
@@ -717,7 +790,7 @@ def loadImage():
     try:
         image = io.imread(FILENAME)
         listDebugImages.append(image)
-        listDebugTitles.append('Original Image')
+        listDebugImageTitles.append('Original Image')
         return image
     except:
         print("No file named '" + FILENAME + "' found. Exiting program!")
@@ -731,7 +804,7 @@ def plotImages():
     for idx, im in enumerate(listDebugImages):
         plt.subplot(subplotRows, subplotColumns, idx+1, sharex=ax, sharey=ax)
         plt.imshow(im, cmap=plt.cm.gray, interpolation='nearest')
-        plt.title(listDebugTitles[idx])
+        plt.title(listDebugImageTitles[idx])
         plt.axis('off')
 
     #fig, axes = plt.subplots(ncols=5, figsize=(9, 3), sharex=True, sharey=True, subplot_kw={'adjustable': 'box-forced'})
@@ -927,6 +1000,43 @@ def feretsDiameters(hull, step=1):
 
     return (minDiameter, maxDiameter)
 
+def students_ttest(inputList):
+    subplotColumns = 3
+    subplotRows = 1
+    if (len(inputList) % subplotColumns == 0):
+        subplotRows = int(len(inputList) / subplotColumns)
+    else:
+        subplotRows = int(len(inputList) / subplotColumns) + 1
+
+    ax = plt.subplot(subplotRows, subplotColumns, 1)
+    low = 2 * MICRO_METER_PER_PIXEL
+    high = 5000#1460
+    for idx, rvs in enumerate(inputList):
+        rvs = [i for j, i in enumerate(rvs) if j > DIAMETER_THRESHOLD_LOW or j < DIAMETER_THRESHOLD_HIGH]
+        listMeasureX0 = list()
+        
+        for percentile in CDF_PERCENTILE_REF:
+            listMeasureX0.append(np.percentile(rvs, percentile))
+        tmp = np.array((listMeasureX0, CDF_PERCENTILE_REF))
+        tmpRef = np.array((CDF_X0_REF, CDF_PERCENTILE_REF))
+
+        print("Standard Deviation Ref: " + str(tmpRef.std()))
+        print("Standard Deviation x0: " + str(tmp.std()))
+        plt.subplot(subplotRows, subplotColumns, idx+1, sharex=ax, sharey=ax)
+        plt.plot(CDF_X0_REF, CDF_PERCENTILE_REF, 'o', listMeasureX0, CDF_PERCENTILE_REF, '-')
+        plt.grid(True)
+        plt.xscale('log')
+        plt.title(listDebugMeasurementTitles[idx])
+        #print(str(listDebugMeasurementTitles[idx]) + ": " + str(scipy.stats.ttest_1samp(rvs, int(X50REF))))
+        print(str(listDebugMeasurementTitles[idx]) + ": " + str(scipy.stats.ttest_ind(listMeasureX0, CDF_X0_REF, equal_var=True)))
+  
+    plt.show()
+
+
+
+
+
+
 
 
 
@@ -938,17 +1048,19 @@ def feretsDiameters(hull, step=1):
 
 ##### MAIN ####
 def main():
-    global DEBUG_FILTERING, DEBUG_SEGMENTING, DEBUG_EDITING, DEBUG_PLOT, DEBUG_DATA, FILENAME, X50REF, X503TEMP, EXCEL_ROW
+    global DEBUG_FILTERING, DEBUG_SEGMENTING, DEBUG_EDITING, DEBUG_PLOT, DEBUG_DATA, DEBUG_STUDENTS_TTEST, FILENAME, X50REF, X503TEMP, CDF_PERCENTILE_REF, EXCEL_ROW
     DEBUG_FILTERING = False
     DEBUG_SEGMENTING = False
     DEBUG_EDITING = False
     DEBUG_PLOT = False
     DEBUG_DATA = False
+    DEBUG_STUDENTS_TTEST = True
+    DEBUG_TEST_CAL = False
     DEBUG_TEST_ALL = False
 
     # parse command line options
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["debug", "plot", "data", "filename=", "x50=", "test-all"])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["debug", "plot", "data", "filename=", "x50=", "test-cal", "test-all"])
     except getopt.GetoptError as err:
         print(err)
         print("error")
@@ -973,6 +1085,8 @@ def main():
             FILENAME = "Images/" + a + "/latest0.jpg"
         elif o in ("--x50="):
             X50REF = a
+        elif o in ("--test-cal"):
+            DEBUG_TEST_CAL = True
         elif o in ("--test-all"):
             DEBUG_TEST_ALL = True
 
@@ -980,50 +1094,84 @@ def main():
     for arg in args:
         process(arg) # process() is defined elsewhere
 
-    if (DEBUG_TEST_ALL):
+    if (DEBUG_TEST_ALL or DEBUG_TEST_CAL):
         listTest = list()
-        listTest.append((1040, 394, 441))
-        listTest.append((1084, 396, 452))
-        listTest.append((1108, 449, 486))
-        listTest.append((1109, 401, 417))
-        listTest.append((1150, 426, 416))
-        listTest.append((1156, 422, 435))
-        listTest.append((1159, 409, 483))
-        listTest.append((1162, 388, 457))
-        listTest.append((1168, 426, 542))
-        listTest.append((1175, 428, 361))
-        listTest.append((1177, 421, 537))
-        listTest.append((1181, 439, 525))
-        listTest.append((1187, 390, 389))
-        listTest.append((1190, 406, 428))
-        listTest.append((1191, 409, 517))
-        listTest.append((1197, 409, 532))
-        listTest.append((1206, 421, 522))
-        listTest.append((1207, 356, 459))
-        listTest.append((1210, 401, 506))
-        listTest.append((1213, 394, 518))
-        listTest.append((1214, 431, 437))
-        listTest.append((1217, 437, 466))
-        listTest.append((11095, 450, 383))
-        listTest.append((11096, 414, 477))
-        listTest.append((11104, 416, 456))
-        listTest.append((11112, 387, 476))
-        listTest.append((11133, 391, 472))
-        listTest.append((11144, 410, 478))
-        listTest.append((11146, 420, 539))
-        listTest.append((11147, 405, 579))
-        listTest.append((11158, 416, 509))
-        listTest.append((11160, 419, 507))
-        listTest.append((11199, 434, 465))
-        listTest.append((11204, 407, 545))
-        listTest.append((11216, 405, 443))
-        listTest.append((11222, 415, 453))
+
+        if (DEBUG_TEST_CAL):
+            listTest.append((11, 470, 470, []))
+            listTest.append((12, 470, 470, []))
+            listTest.append((13, 470, 470, []))
+            listTest.append((14, 470, 470, []))
+            listTest.append((21, 470, 470, []))
+            listTest.append((22, 470, 470, []))
+            listTest.append((23, 470, 470, []))
+            listTest.append((24, 470, 470, []))
+            listTest.append((31, 470, 470, []))
+            listTest.append((32, 470, 470, []))
+            listTest.append((33, 470, 470, []))
+            listTest.append((34, 470, 470, []))
+            listTest.append((41, 470, 470, []))
+            listTest.append((42, 470, 470, []))
+            listTest.append((43, 470, 470, []))
+            listTest.append((44, 470, 470, []))
+            listTest.append((51, 470, 470, []))
+            listTest.append((52, 470, 470, []))
+            listTest.append((53, 470, 470, []))
+            listTest.append((54, 470, 470, []))
+        if (DEBUG_TEST_ALL):
+            listTest.append((1040, 394, 441, [2.55,  3.04,  3.50,  3.94,  4.54,  5.27,  5.91,  6.60,
+                                               7.30,  7.88,  8.46,  9.20,  10.24, 11.33, 12.45, 14.01,
+                                               16.09, 18.92, 22.46, 28.84, 39.86, 55.84, 74.26, 89.83,
+                                               98.02, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0]))
+            listTest.append((1084, 396, 452, []))
+            listTest.append((1108, 449, 486, []))
+            listTest.append((1109, 401, 417, []))
+            listTest.append((1150, 426, 416, []))
+            listTest.append((1156, 422, 435, []))
+            listTest.append((1159, 409, 483, []))
+            listTest.append((1162, 388, 457, []))
+            listTest.append((1168, 426, 542, []))
+            listTest.append((1175, 428, 361, []))
+            listTest.append((1177, 421, 537, []))
+            listTest.append((1181, 439, 525, []))
+            listTest.append((1187, 390, 389, []))
+            listTest.append((1190, 406, 428, []))
+            listTest.append((1191, 409, 517, []))
+            listTest.append((1197, 409, 532, []))
+            listTest.append((1206, 421, 522, []))
+            listTest.append((1207, 356, 459, []))
+            listTest.append((1210, 401, 506, []))
+            listTest.append((1213, 394, 518, []))
+            listTest.append((1214, 431, 437, []))
+            listTest.append((1217, 437, 466, []))
+            listTest.append((11095, 450, 383, []))
+            listTest.append((11096, 414, 477, []))
+            listTest.append((11104, 416, 456, []))
+            listTest.append((11112, 387, 476, []))
+            listTest.append((11133, 391, 472, []))
+            listTest.append((11144, 410, 478, []))
+            listTest.append((11146, 420, 539, []))
+            listTest.append((11147, 405, 579, []))
+            listTest.append((11158, 416, 509, []))
+            listTest.append((11160, 419, 507, []))
+            listTest.append((11199, 434, 465, []))
+            listTest.append((11204, 407, 545, []))
+            listTest.append((11216, 405, 443, []))
+            listTest.append((11222, 415, 453, []))
 
         EXCEL_ROW = 0
-        for (file, temp3, expected) in listTest:
+        for (file, temp3, expected, cdfPercentiles) in listTest:
             FILENAME = "images/" + str(file) + "/latest0.jpg"
             X503TEMP = temp3
             X50REF = expected
+            if (cdfPercentiles != []):
+                CDF_PERCENTILE_REF = cdfPercentiles
+            else:
+                CDF_PERCENTILE_REF = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
             EXCEL_ROW += 1
             analyze()
     else:
