@@ -1,0 +1,28 @@
+Märkesvara/Kaffesort:
+	Ställs det in före körning?
+
+Contamination
+	Vad betyder det?
+	Varför är värdet så högt (90% eller 125%)?
+
+Warning
+	Vad betyder "Coarse particle probably exceeding the measuring range"?
+
+x10-x99
+	Varför är just de percentilerna valda?
+	x16 och x84 är inte standard, varför valdes de?
+
+Vad står SMD för?
+Vad står VMD för?
+Vad står Sv för?
+Vad står Sm för?
+Vad står Q3 för?
+
+Vad står "Particle Size" för? Är det diameter för partiklar eller avståndet mellan laserdiffraktionen?
+Varför ha fasta mätpunkter istället för fasta percentiler?
+
+
+
+
+Varians/spridning på partikelsorlekar
+Contamination 91%???
