@@ -12,6 +12,7 @@ from xlsxwriter import Workbook #, easyxf
 
 from PIL import Image
 from scipy import ndimage as ndi
+import matplotlib # matplotlib.rcParams.update({'font.size': 30})
 import matplotlib.pyplot as plt
 
 from skimage import img_as_float # Using an image from OpenCV with skimage
@@ -19,12 +20,14 @@ from skimage import img_as_ubyte # Using an image from skimage with OpenCV
 from skimage import color
 from skimage import io
 
+
 import skimage.filters
 from skimage.filters.rank import enhance_contrast
 from skimage.filters.rank import median
 
 from skimage.morphology import disk
 from skimage.morphology import reconstruction
+from skimage.morphology import remove_small_holes
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max
 from skimage.draw import ellipse
@@ -48,7 +51,7 @@ CDF_X0_REF = [18, 22, 26, 30, 36, 44, 52, 62, # TODO Histogram och standard vari
             300, 360, 420, 500, 600, 720, 860, 1020,
             1220, 1460, 1740, 2060, 2460, 2940, 3500]
 # TODO um / pixel microMeterPerPixel = 20.0 # 19.8
-MICRO_METER_PER_PIXEL = 17.4 #18.15 * 2.0#19.8 #17.39
+MICRO_METER_PER_PIXEL = 470/22 #17.4 #18.15 * 2.0#19.8 #17.39
 DIAMETER_THRESHOLD_LOW = 2 * MICRO_METER_PER_PIXEL
 DIAMETER_THRESHOLD_HIGH = 5000#1460
 
@@ -147,6 +150,7 @@ global DEBUG_EDITING
 global DEBUG_PLOT
 global DEBUG_DATA
 global DEBUG_STUDENTS_TTEST
+global DEBUG_SAVE
 
 global DEBUG_HEIGHTS
 global DEBUG_WIDHTS
@@ -165,7 +169,7 @@ global DEBUG_FW
 global DEBUG_MAJOR_AXIS
 global DEBUG_MINOR_AXIS
 
-HYBRID_FILTER = True
+HYBRID_FILTER = False
 DEBUG_WATERSHED = True
 
 global imageOriginal
@@ -442,7 +446,7 @@ def analyze():
             listPerimeters.append(props.perimeter * MICRO_METER_PER_PIXEL)
             listCentroids.append(props.local_centroid)
 
-    if True:
+    if False:
         for idx, grain in enumerate(listGrainImages):
 
             # Add 1 pixel border around the grain
@@ -689,6 +693,8 @@ def filterImage(inputImage):
     else:
         # Median filter
         image = median(image)
+        #image = median(image)
+        #image = median(image)
         listDebugImages.append(image)
         listDebugImageTitles.append('Median Filter')
 
@@ -711,7 +717,7 @@ def segmentImage(inputImage):
     #threshold = skimage.filters.threshold_local(image, 3)
     
     # Binary
-    image = inputImage <= 50#threshold #TODO Får inte samma värde som Anders, belysningen räknas in här
+    image = inputImage <= threshold#threshold #TODO Får inte samma värde som Anders, belysningen räknas in här
     listDebugImages.append(image)
     listDebugImageTitles.append('Binary Threshold')
 
@@ -733,6 +739,9 @@ def segmentImage(inputImage):
         ax[2].imshow(image, cmap=plt.cm.gray)
         ax[2].set_title('Thresholded')
         ax[2].axis('off')
+        #plt.hist(inputImage.ravel(), bins=256)
+        #plt.title('Histogram')
+        #plt.axvline(threshold, color='r')
         plt.show()
 
     return image
@@ -749,30 +758,43 @@ def editImage(inputImage):
 
     # Fill interior TODO
     #seed = np.copy(image)
-    #seed[-1:-1, -1:-1] = image.min()
+    #seed[-1:-1, -1:-1] = image.max()
     #mask = image
     #filled = reconstruction(seed, mask, method='erosion')
     #image = filled
+    #listDebugImages.append(image)
+    #listDebugImageTitles.append('Erosion')
 
     #seed = np.copy(image)
     #seed[1:-1, 1:-1] = image.min()
     #rec = reconstruction(seed, image, method='dilation')
     #image = rec
+    #listDebugImages.append(image)
+    #listDebugImageTitles.append('Dilation')
 
-    # Remove objects TODO
+    # Remove small holes TODO
+    image = remove_small_holes(image, 7)
+    listDebugImages.append(image)
+    listDebugImageTitles.append('Remove small holes')
 
     # Separate objects / Watershedding
     distance = ndi.distance_transform_edt(image)
     listDebugImages.append(distance)
     listDebugImageTitles.append('Distance')
 
-    local_maxi = peak_local_max(distance, indices=False, footprint=np.ones((3, 3)), labels=image)
+    #labels_tmp = label(image, connectivity=1)
+    local_maxi = peak_local_max(distance, min_distance=10, indices=False, labels=image) #peak_local_max(distance, min_distance=100, indices=False, footprint=np.ones((3, 3)), labels=image)
     listDebugImages.append(local_maxi)
     listDebugImageTitles.append('Local Maxi')
 
     markers = ndi.label(local_maxi)[0]
 
-    labels = watershed(-distance, markers, mask=image)
+
+    #labels = watershed(-distance, markers)
+    #segmentation = ndi.binary_fill_holes(labels - 5)
+    #labels_new, _ = ndi.label(segmentation)
+
+    labels = watershed(-distance, markers, mask=image, compactness=1.0, watershed_line=True)
     listDebugImages.append(labels)
     listDebugImageTitles.append('Watershed')
 
@@ -786,7 +808,13 @@ def editImage(inputImage):
         ax[1].set_title('Filled interior')
         ax[2].imshow(-distance, cmap=plt.cm.gray, interpolation='nearest')
         ax[2].set_title('Distances')
-        ax[3].imshow(labels, cmap=plt.cm.Spectral, interpolation='nearest')
+        for idx, col in enumerate(labels):
+            for idy, row in enumerate(col):
+                if labels[idx][idy] > 0.0:
+                    labels[idx][idy] = 0.0
+                else:
+                    labels[idx][idy] = 255
+        ax[3].imshow(labels, cmap=plt.cm.binary, interpolation='nearest')
         ax[3].set_title('Separated objects')
 
         for a in ax:
@@ -818,6 +846,12 @@ def plotImages():
         plt.imshow(im, cmap=plt.cm.gray, interpolation='nearest')
         plt.title(listDebugImageTitles[idx])
         plt.axis('off')
+        if DEBUG_SAVE:
+            #io.imsave(str("output_images/" + listDebugImageTitles[idx]), im)
+            #scipy.misc.imsave(str("output_images/" + listDebugImageTitles[idx] + ".jpg"), im)
+            s = Image.fromarray(im).convert('RGB')
+            s.save(str("output_images/" + listDebugImageTitles[idx] + ".jpg"))
+
 
     for im in listDebugImages:
         plt.imshow(im, cmap=plt.cm.gray, interpolation='nearest')
@@ -844,8 +878,8 @@ def plotImages():
     #fig.tight_layout()
     plt.show()
 
-    plt.imshow(image)
-    plt.show()
+    #plt.imshow(image)
+    #plt.show()
 
 def plotData():
 
@@ -1051,6 +1085,14 @@ def students_ttest_wilcoxon(inputMeasures, functionName):
     print(str(functionName) + " " + "Student's t-test: " + str((studentsStat, studentsPval)))
     #print(str(functionName) + " " + "Wilcoxon signed-rank test " + str((wilcoxonStat, wilcoxonPval)))
 
+    plt.plot(CDF_X0_REF, CDF_PERCENTILE_REF, 'o')
+    plt.plot(listMeasureX0, CDF_PERCENTILE_REF)
+    plt.grid(True)
+    plt.xscale('log')
+    plt.xlim([10, 4000])
+    plt.ylim([0, 102])
+    plt.show()
+
     return (studentsStat, studentsPval, 0, 0)#, wilcoxonStat, wilcoxonPval)
 
 def sphereVolume(diameter):
@@ -1082,7 +1124,7 @@ def applyWeight(listsToWeight):
 
 ##### MAIN ####
 def main():
-    global DEBUG_FILTERING, DEBUG_SEGMENTING, DEBUG_EDITING, DEBUG_PLOT, DEBUG_DATA, DEBUG_STUDENTS_TTEST, FILENAME, X50REF, X503TEMP, CDF_PERCENTILE_REF, EXCEL_ROW, DEBUG_HEIGHTS, DEBUG_WIDHTS, DEBUG_LFD, DEBUG_GFD, DEBUG_MFD, DEBUG_ECPD, DEBUG_ECAD, DEBUG_LBCD, DEBUG_HMD, DEBUG_VMD, DEBUG_LBRW, DEBUG_LBRL, DEBUG_FL, DEBUG_FW, DEBUG_MAJOR_AXIS, DEBUG_MINOR_AXIS
+    global DEBUG_FILTERING, DEBUG_SEGMENTING, DEBUG_EDITING, DEBUG_PLOT, DEBUG_DATA, DEBUG_STUDENTS_TTEST, DEBUG_SAVE, FILENAME, X50REF, X503TEMP, CDF_PERCENTILE_REF, EXCEL_ROW, DEBUG_HEIGHTS, DEBUG_WIDHTS, DEBUG_LFD, DEBUG_GFD, DEBUG_MFD, DEBUG_ECPD, DEBUG_ECAD, DEBUG_LBCD, DEBUG_HMD, DEBUG_VMD, DEBUG_LBRW, DEBUG_LBRL, DEBUG_FL, DEBUG_FW, DEBUG_MAJOR_AXIS, DEBUG_MINOR_AXIS
 
     DEBUG_FILTERING = False
     DEBUG_SEGMENTING = False
@@ -1092,6 +1134,7 @@ def main():
     DEBUG_STUDENTS_TTEST = True
     DEBUG_TEST_CAL = False
     DEBUG_TEST_ALL = False
+    DEBUG_SAVE = False
 
     DEBUG_HEIGHTS = False
     DEBUG_WIDHTS = False
@@ -1112,7 +1155,7 @@ def main():
 
     # parse command line options
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["debug", "plot", "data", "filename=", "x50=", "test-cal", "test-all",
+        opts, args = getopt.getopt(sys.argv[1:], "", ["debug", "plot", "data", "filename=", "x50=", "test-cal", "test-all", "save",
                                                     "heights",
                                                     "widths",
                                                     "LFD",
@@ -1158,6 +1201,8 @@ def main():
             DEBUG_TEST_CAL = True
         elif o in ("--test-all"):
             DEBUG_TEST_ALL = True
+        elif o in ("--save"):
+            DEBUG_SAVE = True
         elif o in ("--heights"):
             DEBUG_HEIGHTS = True
         elif o in ("--widths"):
