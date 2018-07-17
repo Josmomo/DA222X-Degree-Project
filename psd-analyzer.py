@@ -792,9 +792,9 @@ def editImage(inputImage):
 
     #labels = watershed(-distance, markers)
     #segmentation = ndi.binary_fill_holes(labels - 5)
-    #labels_new, _ = ndi.label(segmentation)
+    labels_new, _ = ndi.label(image)
 
-    labels = watershed(-distance, markers, mask=image, compactness=1.0, watershed_line=True)
+    labels = watershed(-distance, markers, mask=labels_new, compactness=1.0, watershed_line=True)
     listDebugImages.append(labels)
     listDebugImageTitles.append('Watershed')
 
@@ -1085,13 +1085,14 @@ def students_ttest_wilcoxon(inputMeasures, functionName):
     print(str(functionName) + " " + "Student's t-test: " + str((studentsStat, studentsPval)))
     #print(str(functionName) + " " + "Wilcoxon signed-rank test " + str((wilcoxonStat, wilcoxonPval)))
 
-    plt.plot(CDF_X0_REF, CDF_PERCENTILE_REF, 'o')
-    plt.plot(listMeasureX0, CDF_PERCENTILE_REF)
-    plt.grid(True)
-    plt.xscale('log')
-    plt.xlim([10, 4000])
-    plt.ylim([0, 102])
-    plt.show()
+    if (DEBUG_DATA):
+        plt.plot(CDF_X0_REF, CDF_PERCENTILE_REF, 'o')
+        plt.plot(listMeasureX0, CDF_PERCENTILE_REF)
+        plt.grid(True)
+        plt.xscale('log')
+        plt.xlim([10, 4000])
+        plt.ylim([0, 102])
+        plt.show()
 
     return (studentsStat, studentsPval, 0, 0)#, wilcoxonStat, wilcoxonPval)
 
